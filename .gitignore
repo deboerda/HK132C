@@ -1,0 +1,61 @@
+# Unity / Tuanjie generated
+Library/
+Library
+Temp/
+Temp
+Logs/
+Logs
+UserSettings/
+Obj/
+Build/
+Builds/
+MemoryCaptures/
+.crash/
+sysinfo.txt
+*.csproj
+*.unityproj
+*.sln
+*.suo
+*.tmp
+*.user
+*.userprefs
+*.pidb
+*.booproj
+*.svd
+*.pdb
+*.mdb
+*.opendb
+*.VC.db
+*.apk
+*.aab
+*.unitypackage
+
+# IDE
+.vs/
+.vscode/
+.idea/
+.consulo/
+UpgradeLog*.htm
+
+# Plastic SCM metadata
+.plastic/
+.plastic.*
+
+# Tuanjie Codely tool caches (indexes / package cache)
+.codely/
+.codely-cli/
+.codely.packages/
+.codelyignore
+
+# Oversized artifacts (exceed GitHub 100MB limit or regenerable)
+output.zip
+Assets/hk132export.unitypackage
+
+# Data-end app runtime (PyInstaller redistributable DLLs, 700MB+)
+FlyParamData/_internal/
+
+# OS
+.DS_Store
+Thumbs.db
+Desktop.ini
+Assets/hk132export.unitypackage*

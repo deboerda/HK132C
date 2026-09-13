@@ -1,0 +1,25 @@
+{
+  "fields": {
+    "trackId": ["trackId", "id", "aircraftId", "planeId", "飞机ID", "飞机编号"],
+    "planId": ["planId", "plan", "计划ID", "飞行计划"],
+    "flightTime": ["flightTime", "time", "时间", "飞行时间"],
+    "lng": ["lng", "lon", "longitude", "经度", "经"],
+    "lat": ["lat", "latitude", "纬度"],
+    "alt": ["alt", "altitude", "height", "高度"],
+    "heading": ["heading", "yaw", "航向", "航向角"],
+    "pitch": ["pitch", "俯仰", "俯仰角"],
+    "roll": ["roll", "横滚", "横滚角"],
+    "state": ["state", "flightState", "状态", "飞行状态"],
+    "battery": ["battery", "电量"],
+    "speed": ["speed", "速度"],
+    "alarm": ["alarm", "warning", "告警", "告警信息"],
+    "detector_type": ["detector_type", "detectorType", "探测器类型"],
+    "range_type": ["range_type", "rangeType", "范围类型"],
+    "detect_range": ["detect_range", "detectRange", "range", "探测范围"],
+    "yaw_angle": ["yaw_angle", "yawAngle", "左右偏转角"],
+    "pitch_angle": ["pitch_angle", "pitchAngle", "上下偏转角"],
+    "center_point": ["center_point", "centerPoint", "中心点"],
+    "radar_status": ["radar_status", "radarStatus", "雷达状态"],
+    "cycleId": ["cycleId", "cycle_id", "周期ID"]
+  }
+}

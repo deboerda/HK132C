@@ -1,0 +1,173 @@
+{
+    "lng": {
+        "internalKey": "lng",
+        "aliases": [
+            "lng",
+            "lon",
+            "longitude",
+            "经度"
+        ]
+    },
+    "lat": {
+        "internalKey": "lat",
+        "aliases": [
+            "lat",
+            "latitude",
+            "纬度"
+        ]
+    },
+    "alt": {
+        "internalKey": "alt",
+        "aliases": [
+            "alt",
+            "altitude",
+            "height",
+            "高度"
+        ]
+    },
+    "heading": {
+        "internalKey": "heading",
+        "aliases": [
+            "heading",
+            "yaw",
+            "航向",
+            "航向角"
+        ]
+    },
+    "pitch": {
+        "internalKey": "pitch",
+        "aliases": [
+            "pitch",
+            "俯仰",
+            "俯仰角"
+        ]
+    },
+    "roll": {
+        "internalKey": "roll",
+        "aliases": [
+            "roll",
+            "横滚",
+            "横滚角"
+        ]
+    },
+    "speed": {
+        "internalKey": "speed",
+        "aliases": [
+            "speed",
+            "速度"
+        ]
+    },
+    "battery": {
+        "internalKey": "battery",
+        "aliases": [
+            "battery",
+            "电量"
+        ]
+    },
+    "detectRange": {
+        "internalKey": "detectRange",
+        "aliases": [
+            "detect_range",
+            "detectRange",
+            "range",
+            "探测范围"
+        ]
+    },
+    "yawAngle": {
+        "internalKey": "yawAngle",
+        "aliases": [
+            "yaw_angle",
+            "yawAngle",
+            "左右偏转角"
+        ]
+    },
+    "pitchAngle": {
+        "internalKey": "pitchAngle",
+        "aliases": [
+            "pitch_angle",
+            "pitchAngle",
+            "上下偏转角"
+        ]
+    },
+    "state": {
+        "internalKey": "state",
+        "aliases": [
+            "state",
+            "flightState",
+            "状态"
+        ]
+    },
+    "alarm": {
+        "internalKey": "alarm",
+        "aliases": [
+            "alarm",
+            "warning",
+            "告警"
+        ]
+    },
+    "detectorType": {
+        "internalKey": "detectorType",
+        "aliases": [
+            "detector_type",
+            "detectorType",
+            "探测器类型"
+        ]
+    },
+    "rangeType": {
+        "internalKey": "rangeType",
+        "aliases": [
+            "range_type",
+            "rangeType",
+            "范围类型"
+        ]
+    },
+    "centerPoint": {
+        "internalKey": "centerPoint",
+        "aliases": [
+            "center_point",
+            "centerPoint",
+            "中心点"
+        ]
+    },
+    "radarStatus": {
+        "internalKey": "radarStatus",
+        "aliases": [
+            "radar_status",
+            "radarStatus",
+            "雷达状态"
+        ]
+    },
+    "flightTime": {
+        "internalKey": "flightTime",
+        "aliases": [
+            "flightTime",
+            "time",
+            "飞行时间"
+        ]
+    },
+    "trackId": {
+        "internalKey": "trackId",
+        "aliases": [
+            "trackId",
+            "id",
+            "aircraftId",
+            "planeId",
+            "飞机编号"
+        ]
+    },
+    "planId": {
+        "internalKey": "planId",
+        "aliases": [
+            "planId",
+            "计划号"
+        ]
+    },
+    "cycleId": {
+        "internalKey": "cycleId",
+        "aliases": [
+            "cycleId",
+            "cycle_id",
+            "周期号"
+        ]
+    }
+}

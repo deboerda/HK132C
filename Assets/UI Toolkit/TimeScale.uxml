@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<engine:UXML xmlns:engine="UnityEngine.UIElements">
+    <engine:VisualElement class="time-scale" name="TimeScaleRoot" style="width: 1200px; height: 40px;">
+        <engine:VisualElement class="ticks-container" name="TicksContainer" />
+        <engine:Label class="time-range-label" name="TimeRangeLabel" text="--:--:-- ~ --:--:--" />
+    </engine:VisualElement>
+</engine:UXML>

@@ -1,0 +1,29 @@
+/* Vertical Tape Instrument — USS (colors only) */
+.tape-inst {
+    background-color: rgba(8, 12, 18, 0.85);
+}
+.tape-pointer {
+    background-color: rgb(255, 200, 0);
+}
+.tape-readout {
+    color: rgb(255, 200, 0);
+    -unity-font-style: bold;
+}
+.tape-id {
+    color: rgb(180, 190, 200);
+    -unity-font-style: bold;
+}
+.tick-major {
+    background-color: rgba(200, 210, 220, 0.9);
+}
+.tick-minor {
+    background-color: rgba(110, 120, 130, 0.8);
+}
+.tape-number {
+    color: rgba(200, 210, 220, 0.95);
+    -unity-font-style: bold;
+}
+.tape-bg-num {
+    color: rgb(255, 200, 0);
+    -unity-font-style: bold;
+}
