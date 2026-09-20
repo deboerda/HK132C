@@ -1,6 +1,7 @@
 using System;
 using System.Collections;
 using System.Collections.Generic;
+using System.Linq;
 using System.IO;
 using System.Net;
 using System.Net.Sockets;
@@ -16,8 +17,8 @@ public class FlightDataStreamReceiver : MonoBehaviour
         public string trackId;
         public string planId;
         public string flightTime;
-        public float lng;
-        public float lat;
+        public double lng;
+        public double lat;
         public float alt;
         public float heading;
         public float pitch;
@@ -57,6 +58,9 @@ public class FlightDataStreamReceiver : MonoBehaviour
         public float yawAngle;
         public float pitchAngle;
         public string centerPoint;
+        public string centerPoint1;
+        public float yawScanAngle;
+        public float pitchScanAngle;
         public string radarStatus;
     }
 
@@ -66,8 +70,8 @@ public class FlightDataStreamReceiver : MonoBehaviour
         public string flightTime;
         public string trackId;
         public int cycleId;
-        public float lng;
-        public float lat;
+        public double lng;
+        public double lat;
         public float alt;
         public float heading;
         public float pitch;
@@ -99,6 +103,7 @@ public class FlightDataStreamReceiver : MonoBehaviour
     [Header("Debug")]
     [SerializeField] private bool enableDebugLog = true;
     [SerializeField] private bool logIncomingMessageTypes = false;
+    [SerializeField] private bool logIncomingRawPayloads = false;
 
     private TcpClient client;
     private TcpListener listener;
@@ -115,6 +120,7 @@ public class FlightDataStreamReceiver : MonoBehaviour
     private readonly Dictionary<string, TrackPosition> latestPositionsByTrack = new Dictionary<string, TrackPosition>();
     private readonly Dictionary<string, TrackLine> latestTrackLinesByTrack = new Dictionary<string, TrackLine>();
     private readonly Dictionary<string, TrackTimetableState> latestStatesByTrack = new Dictionary<string, TrackTimetableState>();
+    private readonly Dictionary<string, TrackTimetableState> latestSensorsByKey = new Dictionary<string, TrackTimetableState>();
     private readonly List<CycleTableRecord> latestCycleRecords = new List<CycleTableRecord>();
     private readonly HashSet<string> latestCycleUpdatedTrackIds = new HashSet<string>();
     private string latestCycleFlightTime;
@@ -125,9 +131,55 @@ public class FlightDataStreamReceiver : MonoBehaviour
     private readonly Dictionary<string, float> previousHeadingByTrack = new Dictionary<string, float>();
     private readonly Dictionary<string, DateTime> previousTimeByTrack = new Dictionary<string, DateTime>();
     private readonly Dictionary<string, List<string>> dataFields = new Dictionary<string, List<string>>(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, Dictionary<string, string>> latestValuesByTrack = new Dictionary<string, Dictionary<string, string>>(StringComparer.OrdinalIgnoreCase);
+    private int dataFieldsVersion;
+    /// <summary>Incremented every time a DATA_FIELDS message is applied; cheap change detection for UI.</summary>
+    public int DataFieldsVersion => dataFieldsVersion;
     public IReadOnlyDictionary<string, List<string>> DataFields
     {
         get { lock (dataLock) { return new Dictionary<string, List<string>>(dataFields); } }
+    }
+
+    /// <summary>按 DATA_FIELDS 的 json key 取该飞机最近一帧的原始值（周期表/事件表增量合并）。</summary>
+    public bool TryGetFieldValue(string trackId, string jsonKey, out string value)
+    {
+        value = null;
+        if (string.IsNullOrWhiteSpace(trackId) || string.IsNullOrWhiteSpace(jsonKey))
+            return false;
+        lock (dataLock)
+        {
+            if (!latestValuesByTrack.TryGetValue(trackId, out var bag) || bag == null)
+                return false;
+            return bag.TryGetValue(jsonKey, out value) && value != null;
+        }
+    }
+
+    public float? TryGetFieldFloat(string trackId, string jsonKey)
+    {
+        if (!TryGetFieldValue(trackId, jsonKey, out string text) || string.IsNullOrWhiteSpace(text))
+            return null;
+        if (float.TryParse(text, System.Globalization.NumberStyles.Float,
+            System.Globalization.CultureInfo.InvariantCulture, out float parsed))
+            return parsed;
+        return null;
+    }
+    private string latestEventTableFlightTime = string.Empty;
+    private int eventTableFrameCount;
+    private bool eventTableSummaryLogged;
+    private bool cycleTableSummaryLogged;
+
+    /// <summary>最近一帧 EVENT_TABLE_DATA 的 flightTime（调试用）。
+    /// 数据端用该类型推送事件/时刻表（与 TIMETABLE_STATE 同结构，约几百字节），
+    /// 必须解析 state 并在有经纬姿态时增量合并位置；禁止整包丢弃，否则面板停在首帧。
+    /// 禁止在锁内 ToString 大负载。</summary>
+    public bool TryGetLatestEventTable(out string flightTime, out string json)
+    {
+        lock (dataLock)
+        {
+            flightTime = latestEventTableFlightTime;
+            json = string.Empty;
+        }
+        return !string.IsNullOrEmpty(flightTime);
     }
     private string primaryTrackId;
     private TaskTimeInfo latestTaskTimeInfo;
@@ -167,6 +219,18 @@ public class FlightDataStreamReceiver : MonoBehaviour
             lock (dataLock)
             {
                 return new List<TrackTimetableState>(latestStatesByTrack.Values);
+            }
+        }
+    }
+
+    /// <summary>按 飞机|探测器 增量保存的传感器快照。无探测器类型的帧不会覆盖已有行。</summary>
+    public List<TrackTimetableState> SnapshotSensors
+    {
+        get
+        {
+            lock (dataLock)
+            {
+                return new List<TrackTimetableState>(latestSensorsByKey.Values);
             }
         }
     }
@@ -265,6 +329,14 @@ public class FlightDataStreamReceiver : MonoBehaviour
 
     private void Start()
     {
+        // Fallback: if Awake somehow didn't set Instance, set it now
+        if (Instance == null)
+        {
+            Instance = this;
+            if (enableDebugLog)
+                Debug.Log("[FlightDataStreamReceiver] Instance initialized in Start() (fallback from Awake)");
+        }
+
         if (isDuplicateInstance)
         {
             return;
@@ -600,23 +672,34 @@ public class FlightDataStreamReceiver : MonoBehaviour
     {
         try
         {
-            var envelope = JObject.Parse(json);
-            string type = envelope.Value<string>("type");
-            var data = envelope["data"];
+            if (string.IsNullOrWhiteSpace(json))
+                return;
+
+            json = json.Trim();
+            if (logIncomingRawPayloads)
+                Debug.Log($"[FlightDataStreamReceiver] RAW len={json.Length} {json}");
+
+            string type;
+            JToken data;
+            if (!TrySplitEnvelope(json, out type, out data))
+            {
+                LogError("Parse message failed: unrecognized envelope");
+                return;
+            }
 
             switch (type)
             {
                 case "TRACK_POSITIONS":
                     LogIncomingType("TRACK_POSITIONS");
-                    ParseTrackPositions(data, envelope);
+                    ParseTrackPositions(data, data);
                     break;
                 case "TIMETABLE_STATE":
                     LogIncomingType("TIMETABLE_STATE");
-                    ParseTimetableState(data, envelope);
+                    ParseTimetableState(data, data);
                     break;
                 case "CYCLE_TABLE_DATA":
                     LogIncomingType("CYCLE_TABLE_DATA");
-                    ParseCycleTableData(data, envelope);
+                    ParseCycleTableData(data, data);
                     break;
                 case "TASK_TIME_INFO":
                     LogIncomingType("TASK_TIME_INFO");
@@ -625,6 +708,10 @@ public class FlightDataStreamReceiver : MonoBehaviour
                 case "DATA_FIELDS":
                     LogIncomingType("DATA_FIELDS");
                     ParseDataFields(data);
+                    break;
+                case "EVENT_TABLE_DATA":
+                    LogIncomingType("EVENT_TABLE_DATA");
+                    ParseEventTableData(data, data);
                     break;
                 default:
                     Log($"Received unknown message type={type}");
@@ -636,6 +723,53 @@ public class FlightDataStreamReceiver : MonoBehaviour
         {
             LogError($"Parse message failed: {ex.Message}");
         }
+    }
+
+    private static bool TrySplitEnvelope(string json, out string type, out JToken data)
+    {
+        type = null;
+        data = null;
+        if (string.IsNullOrWhiteSpace(json))
+            return false;
+
+        JObject envelope = null;
+        try
+        {
+            if (json[0] == '{')
+                envelope = JObject.Parse(json);
+        }
+        catch
+        {
+            envelope = null;
+        }
+
+        if (envelope == null)
+        {
+            int brace = json.IndexOf('{');
+            if (brace <= 0)
+                return false;
+            type = json.Substring(0, brace).Trim().Trim('"', '\'', ':', ',');
+            envelope = JObject.Parse(json.Substring(brace));
+        }
+
+        type = type ?? envelope.Value<string>("type");
+        data = envelope["data"];
+        if (data == null || data.Type == JTokenType.Null)
+            data = envelope;
+
+        if (string.IsNullOrWhiteSpace(type))
+        {
+            if (data["records"] != null || data["hight"] != null || (data["lng"] != null && data["trackId"] != null))
+                type = "CYCLE_TABLE_DATA";
+            else if (data["flightStates"] != null || data["event"] != null)
+                type = "EVENT_TABLE_DATA";
+            else if (data["fields"] != null)
+                type = "DATA_FIELDS";
+            else if (data["tracks"] != null)
+                type = "TRACK_POSITIONS";
+        }
+
+        return !string.IsNullOrWhiteSpace(type) && data != null;
     }
 
     private void ParseTrackPositions(JToken data, JToken envelope = null)
@@ -775,12 +909,12 @@ public class FlightDataStreamReceiver : MonoBehaviour
                 trackId = trackId,
                 planId = planId,
                 flightTime = GetString(posToken, "flightTime") ?? frameFlightTime,
-                lng = GetFloat(posToken, "lng") ?? 0f,
-                lat = GetFloat(posToken, "lat") ?? 0f,
-                alt = GetFloat(posToken, "alt") ?? 0f,
-                heading = GetFloat(posToken, "heading") ?? 0f,
-                pitch = GetFloat(posToken, "pitch") ?? 0f,
-                roll = GetFloat(posToken, "roll") ?? 0f,
+                lng = GetMappedDouble(posToken, "lng") ?? 0d,
+                lat = GetMappedDouble(posToken, "lat") ?? 0d,
+                alt = GetMappedFloat(posToken, "alt", "高度") ?? 0f,
+                heading = GetMappedFloat(posToken, "heading", "航向角(度)", "航向", "航向角") ?? 0f,
+                pitch = GetMappedFloat(posToken, "pitch", "俯仰角(度)", "俯仰", "俯仰角") ?? 0f,
+                roll = GetMappedFloat(posToken, "roll", "横滚角(度)", "横滚", "横滚角", "翻滚角") ?? 0f,
             };
 
             trackLine.positions.Add(position);
@@ -889,6 +1023,7 @@ public class FlightDataStreamReceiver : MonoBehaviour
 
                 dataFields[jsonKey] = aliases;
             }
+            dataFieldsVersion++;
         }
 
         Log($"DATA_FIELDS received: {dataFields.Count} json keys ({string.Join(", ", dataFields.Keys)})");
@@ -898,14 +1033,16 @@ public class FlightDataStreamReceiver : MonoBehaviour
     // than at data level. Resolve it once so every visual consumer sees the same time.
     private string GetFlightTime(JToken data, JToken envelope)
     {
+        // 记录层时间每帧会变；data/envelope 上的 flightTime 有时一直停在任务起点。
+        JToken inner = data == null ? null : (data["records"] ?? data["flightStates"] ?? data["event"]);
+        string nested = FindFlightTimeRecursive(inner);
+        if (!string.IsNullOrWhiteSpace(nested))
+            return nested;
+
         string flightTime = FindFlightTimeRecursive(data);
         if (!string.IsNullOrWhiteSpace(flightTime))
-        {
             return flightTime;
-        }
 
-        // The protocol also permits the time at envelope level. Search that
-        // separately because some data-side implementations attach it there.
         return FindFlightTimeRecursive(envelope);
     }
 
@@ -1018,11 +1155,39 @@ public class FlightDataStreamReceiver : MonoBehaviour
         return elapsedSeconds >= 0f;
     }
 
+    private static readonly string[] FlightTimeFormats =
+    {
+        "yyyy-MM-dd HH:mm:ss.ffffff",
+        "yyyy-MM-dd HH:mm:ss.fff",
+        "yyyy-MM-dd HH:mm:ss.ff",
+        "yyyy-MM-dd HH:mm:ss.f",
+        "yyyy-MM-dd HH:mm:ss",
+        "yyyy/M/d H:mm:ss.ffffff",
+        "yyyy/M/d H:mm:ss",
+    };
+
+    private static bool IsNewerFlightTime(string candidate, string previous)
+    {
+        if (string.IsNullOrWhiteSpace(candidate))
+            return false;
+        if (string.IsNullOrWhiteSpace(previous))
+            return true;
+        if (TryParseLocalTime(candidate, out DateTime next) && TryParseLocalTime(previous, out DateTime prev))
+            return next >= prev;
+        return string.CompareOrdinal(candidate, previous) >= 0;
+    }
+
     private static bool TryParseLocalTime(string value, out DateTime time)
     {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            time = default;
+            return false;
+        }
+
         if (DateTime.TryParseExact(
-            value,
-            "yyyy-MM-dd HH:mm:ss.fff",
+            value.Trim(),
+            FlightTimeFormats,
             System.Globalization.CultureInfo.InvariantCulture,
             System.Globalization.DateTimeStyles.None,
             out time))
@@ -1030,24 +1195,88 @@ public class FlightDataStreamReceiver : MonoBehaviour
             return true;
         }
 
-        // Fallback: try general parse (supports formats like "2026/7/21 8:00:00")
-        return DateTime.TryParse(value, out time);
+        return DateTime.TryParse(
+            value,
+            System.Globalization.CultureInfo.InvariantCulture,
+            System.Globalization.DateTimeStyles.AllowWhiteSpaces,
+            out time);
     }
 
     private string GetString(JToken token, params string[] names)
     {
-        if (token == null || names == null)
+        return GetStringMapped(token, null, names);
+    }
+
+    private float? GetFloat(JToken token, params string[] names)
+    {
+        return GetFloatMapped(token, null, names);
+    }
+
+    private string GetMappedString(JToken token, string canonical, params string[] extraNames)
+    {
+        return GetStringMapped(token, canonical, extraNames);
+    }
+
+    private float? GetMappedFloat(JToken token, string canonical, params string[] extraNames)
+    {
+        return GetFloatMapped(token, canonical, extraNames);
+    }
+
+    private double? GetMappedDouble(JToken token, string canonical, params string[] extraNames)
+    {
+        return GetDoubleMapped(token, canonical, extraNames);
+    }
+
+    private double? GetDoubleMapped(JToken token, string canonical, string[] extraNames)
+    {
+        if (token == null)
             return null;
 
-        for (int i = 0; i < names.Length; i++)
+        foreach (string name in EnumerateFieldNames(canonical, extraNames))
         {
-            string name = names[i];
-            if (string.IsNullOrWhiteSpace(name))
-                continue;
-            var value = token[name];
+            var value = GetPropertyIgnoreCase(token, name);
             if (value == null || value.Type == JTokenType.Null)
                 continue;
-            string text = value.Value<string>();
+            if (value.Type == JTokenType.String)
+            {
+                string text = value.Value<string>();
+                if (double.TryParse(text, System.Globalization.NumberStyles.Float,
+                    System.Globalization.CultureInfo.InvariantCulture, out double parsed))
+                    return parsed;
+                continue;
+            }
+            if (value.Type == JTokenType.Integer || value.Type == JTokenType.Float)
+                return value.Value<double>();
+        }
+
+        return null;
+    }
+
+    private static JToken GetPropertyIgnoreCase(JToken token, string name)
+    {
+        if (token == null || string.IsNullOrWhiteSpace(name))
+            return null;
+        if (token is JObject obj)
+        {
+            var property = obj.Property(name, StringComparison.OrdinalIgnoreCase);
+            return property != null ? property.Value : null;
+        }
+        return token[name];
+    }
+
+    private string GetStringMapped(JToken token, string canonical, string[] extraNames)
+    {
+        if (token == null)
+            return null;
+
+        foreach (string name in EnumerateFieldNames(canonical, extraNames))
+        {
+            var value = GetPropertyIgnoreCase(token, name);
+            if (value == null || value.Type == JTokenType.Null)
+                continue;
+            string text = value.Type == JTokenType.String || value.Type == JTokenType.Integer || value.Type == JTokenType.Float
+                ? value.ToString()
+                : value.Value<string>();
             if (!string.IsNullOrWhiteSpace(text))
                 return text;
         }
@@ -1055,25 +1284,68 @@ public class FlightDataStreamReceiver : MonoBehaviour
         return null;
     }
 
-    private float? GetFloat(JToken token, params string[] names)
+    private float? GetFloatMapped(JToken token, string canonical, string[] extraNames)
     {
-        if (token == null || names == null)
+        if (token == null)
             return null;
 
-        for (int i = 0; i < names.Length; i++)
+        foreach (string name in EnumerateFieldNames(canonical, extraNames))
         {
-            string name = names[i];
-            if (string.IsNullOrWhiteSpace(name))
-                continue;
-            var value = token[name];
+            var value = GetPropertyIgnoreCase(token, name);
             if (value == null || value.Type == JTokenType.Null)
                 continue;
+            if (value.Type == JTokenType.String)
+            {
+                string text = value.Value<string>();
+                if (float.TryParse(text, System.Globalization.NumberStyles.Float,
+                    System.Globalization.CultureInfo.InvariantCulture, out float parsed))
+                    return parsed;
+                continue;
+            }
             float? number = value.Value<float?>();
             if (number.HasValue)
                 return number.Value;
         }
 
         return null;
+    }
+
+    private IEnumerable<string> EnumerateFieldNames(string canonical, string[] extraNames)
+    {
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        if (!string.IsNullOrWhiteSpace(canonical) && seen.Add(canonical))
+            yield return canonical;
+        if (extraNames != null)
+        {
+            for (int i = 0; i < extraNames.Length; i++)
+            {
+                string name = extraNames[i];
+                if (!string.IsNullOrWhiteSpace(name) && seen.Add(name))
+                    yield return name;
+            }
+        }
+
+        // 飞机高度驱动：DATA_FIELDS 里 alt 与 hight 是两个 json key，但周期表实测高度在 hight。
+        // 只在取 alt（内部位置）时兼容 hight；面板取 hight 仍走独立 key。
+        if (string.Equals(canonical, "alt", StringComparison.OrdinalIgnoreCase))
+        {
+            if (seen.Add("hight")) yield return "hight";
+            if (seen.Add("height")) yield return "height";
+        }
+
+        if (string.IsNullOrWhiteSpace(canonical))
+            yield break;
+
+        List<string> aliases = null;
+        if (dataFields.TryGetValue(canonical, out aliases) && aliases != null)
+        {
+            for (int i = 0; i < aliases.Count; i++)
+            {
+                string alias = aliases[i];
+                if (!string.IsNullOrWhiteSpace(alias) && seen.Add(alias))
+                    yield return alias;
+            }
+        }
     }
 
     private int? GetInt(JToken token, params string[] names)
@@ -1100,90 +1372,192 @@ public class FlightDataStreamReceiver : MonoBehaviour
     private void ParseTimetableState(JToken data, JToken envelope = null)
     {
         if (data == null)
-        {
             return;
-        }
 
         string messageFlightTime = GetFlightTime(data, envelope);
         PublishFlightTime(messageFlightTime);
 
         lock (dataLock)
         {
-            string frameFlightTime = messageFlightTime;
-            // 飞机ID从 data 层级获取（如 "UAV-001"）
-            string dataTrackId = GetString(data, "trackId");
-            var statesToken = data["flightStates"];
-            if (statesToken == null)
-            {
-                // 如果没有 flightStates，但有 data.trackId，直接用 data 层级的信息
-                if (!string.IsNullOrWhiteSpace(dataTrackId))
-                {
-                    latestStatesByTrack[dataTrackId] = new TrackTimetableState
-                    {
-                        flightTime = frameFlightTime,
-                        trackId = dataTrackId,
-                        state = GetString(data, "state"),
-                        battery = GetFloat(data, "battery") ?? 0f,
-                        speed = GetFloat(data, "speed") ?? 0f,
-                        alarm = GetString(data, "alarm") ?? string.Empty,
-                        detectorType = GetString(data, "detector_type") ?? string.Empty,
-                        rangeType = GetString(data, "range_type") ?? string.Empty,
-                        detectRange = GetFloat(data, "detect_range") ?? 0f,
-                        yawAngle = GetFloat(data, "yaw_angle") ?? 0f,
-                        pitchAngle = GetFloat(data, "pitch_angle") ?? 0f,
-                        centerPoint = GetString(data, "center_point") ?? string.Empty,
-                        radarStatus = GetString(data, "radar_status") ?? string.Empty,
-                    };
-                    if (string.IsNullOrWhiteSpace(primaryTrackId))
-                    {
-                        primaryTrackId = dataTrackId;
-                    }
-                }
-                return;
-            }
-
-            // flightStates 可以是对象或数组
-            IEnumerable<JToken> stateTokens;
-            if (statesToken.Type == JTokenType.Array)
-            {
-                stateTokens = statesToken.Children();
-            }
-            else
-            {
-                stateTokens = new[] { statesToken };
-            }
-
-            foreach (var stateToken in stateTokens)
-            {
-                // 飞机ID优先用 data 层级的 trackId（UAV-001），不是 flightStates 内部的 trackId
-                string trackId = dataTrackId ?? GetString(stateToken, "trackId");
-                if (string.IsNullOrWhiteSpace(trackId))
-                {
-                    continue;
-                }
-
-                latestStatesByTrack[trackId] = new TrackTimetableState
-                {
-                    flightTime = frameFlightTime,
-                    trackId = trackId,
-                    state = GetString(stateToken, "state") ?? GetString(data, "state"),
-                    battery = GetFloat(stateToken, "battery") ?? GetFloat(data, "battery") ?? 0f,
-                    speed = GetFloat(stateToken, "speed") ?? GetFloat(data, "speed") ?? 0f,
-                    alarm = GetString(stateToken, "alarm") ?? GetString(data, "alarm") ?? string.Empty,
-                    detectorType = GetString(stateToken, "detector_type") ?? string.Empty,
-                    rangeType = GetString(stateToken, "range_type") ?? string.Empty,
-                    detectRange = GetFloat(stateToken, "detect_range") ?? 0f,
-                    yawAngle = GetFloat(stateToken, "yaw_angle") ?? 0f,
-                    pitchAngle = GetFloat(stateToken, "pitch_angle") ?? 0f,
-                    centerPoint = GetString(stateToken, "center_point") ?? string.Empty,
-                    radarStatus = GetString(stateToken, "radar_status") ?? string.Empty,
-                };
-                if (string.IsNullOrWhiteSpace(primaryTrackId))
-                {
-                    primaryTrackId = trackId;
-                }
-            }
+            ApplyEventOrTimetableUnsafe(data, data["flightStates"] ?? data["event"], messageFlightTime);
         }
+    }
+
+    private void ParseEventTableData(JToken data, JToken envelope = null)
+    {
+        if (data == null)
+            return;
+
+        // 数据端用 EVENT_TABLE_DATA 推送事件/时刻表（与 TIMETABLE_STATE 同结构）。
+        // 必须解析 state，并在记录带有经纬/姿态时增量合并位置；禁止整包丢弃。
+        string messageFlightTime = GetFlightTime(data, envelope);
+        PublishFlightTime(messageFlightTime);
+
+        var eventToken = data["event"] ?? data["flightStates"] ?? data["records"];
+        int recordCount = 0;
+        if (eventToken != null)
+        {
+            recordCount = eventToken.Type == JTokenType.Array
+                ? ((JArray)eventToken).Count
+                : (eventToken.HasValues ? 1 : 0);
+        }
+
+        lock (dataLock)
+        {
+            latestEventTableFlightTime = messageFlightTime ?? string.Empty;
+            eventTableFrameCount++;
+            ApplyEventOrTimetableUnsafe(data, eventToken, messageFlightTime);
+        }
+
+        if (!eventTableSummaryLogged)
+        {
+            eventTableSummaryLogged = true;
+            Log($"EVENT_TABLE_DATA first frame: flightTime={messageFlightTime ?? "-"}, records={recordCount}, source={(data["event"] != null ? "event" : (data["flightStates"] != null ? "flightStates" : (data["records"] != null ? "records" : "data")))}");
+        }
+    }
+
+    private void ApplyEventOrTimetableUnsafe(JToken data, JToken recordsToken, string frameFlightTime)
+    {
+        string dataTrackId = GetMappedString(data, "trackId", "飞机ID", "飞机编号");
+        IEnumerable<JToken> tokens;
+        if (recordsToken == null)
+        {
+            if (string.IsNullOrWhiteSpace(dataTrackId) && data["lng"] == null && data["lat"] == null)
+                return;
+            tokens = new[] { data };
+        }
+        else if (recordsToken.Type == JTokenType.Array)
+        {
+            tokens = recordsToken.Children();
+        }
+        else
+        {
+            tokens = new[] { recordsToken };
+        }
+
+        foreach (var token in tokens)
+        {
+            if (token == null)
+                continue;
+
+            string trackId = dataTrackId ?? GetMappedString(token, "trackId", "飞机ID", "飞机编号");
+            if (string.IsNullOrWhiteSpace(trackId))
+                continue;
+
+            MergeTimetableStateUnsafe(trackId, frameFlightTime, data, token);
+            MergeFieldBagUnsafe(trackId, data, token);
+        }
+    }
+
+    private void MergeTimetableStateUnsafe(string trackId, string frameFlightTime, JToken data, JToken token)
+    {
+        latestStatesByTrack.TryGetValue(trackId, out var prev);
+        var state = prev ?? new TrackTimetableState { trackId = trackId };
+        state.trackId = trackId;
+        if (!string.IsNullOrWhiteSpace(frameFlightTime) && IsNewerFlightTime(frameFlightTime, state.flightTime))
+            state.flightTime = frameFlightTime;
+
+        string nextState = GetMappedString(token, "state", "飞行状态", "状态") ?? GetMappedString(data, "state", "飞行状态", "状态");
+        if (nextState != null) state.state = nextState;
+        float? battery = GetMappedFloat(token, "battery", "电量(%)", "电量") ?? GetMappedFloat(data, "battery", "电量(%)", "电量");
+        if (battery.HasValue) state.battery = battery.Value;
+        float? speed = GetMappedFloat(token, "speed", "速度(米/秒)", "速度") ?? GetMappedFloat(data, "speed", "速度(米/秒)", "速度");
+        if (speed.HasValue) state.speed = speed.Value;
+        string alarm = GetMappedString(token, "alarm", "告警信息", "告警") ?? GetMappedString(data, "alarm", "告警信息", "告警");
+        if (alarm != null) state.alarm = alarm;
+        string detector = GetMappedString(token, "detector_type", "探测器类型") ?? GetMappedString(data, "detector_type", "探测器类型");
+        if (detector != null) state.detectorType = detector;
+        string rangeType = GetMappedString(token, "range_type") ?? GetMappedString(data, "range_type");
+        if (rangeType != null) state.rangeType = rangeType;
+        float? detectRange = GetMappedFloat(token, "detect_range") ?? GetMappedFloat(data, "detect_range");
+        if (detectRange.HasValue) state.detectRange = detectRange.Value;
+        float? yawAngle = GetMappedFloat(token, "yaw_angle", "扫描中心(度)", "传感器左右偏转角") ?? GetMappedFloat(data, "yaw_angle", "扫描中心(度)", "传感器左右偏转角");
+        if (yawAngle.HasValue) state.yawAngle = yawAngle.Value;
+        float? pitchAngle = GetMappedFloat(token, "pitch_angle", "俯仰中心(度)", "传感器上下偏转角") ?? GetMappedFloat(data, "pitch_angle", "俯仰中心(度)", "传感器上下偏转角");
+        if (pitchAngle.HasValue) state.pitchAngle = pitchAngle.Value;
+        string center = GetMappedString(token, "center_point", "中心点") ?? GetMappedString(data, "center_point", "中心点");
+        if (center != null) state.centerPoint = center;
+        string center1 = GetMappedString(token, "center_point1", "中心点", "传感器位置") ?? GetMappedString(data, "center_point1", "中心点", "传感器位置");
+        if (center1 != null) state.centerPoint1 = center1;
+        float? yawScan = GetMappedFloat(token, "yaw_scan_angle", "扫描方位(度)", "传感器左右扫描范围") ?? GetMappedFloat(data, "yaw_scan_angle", "扫描方位(度)", "传感器左右扫描范围");
+        if (yawScan.HasValue) state.yawScanAngle = yawScan.Value;
+        float? pitchScan = GetMappedFloat(token, "pitch_scan_angle", "俯仰方位(度)", "传感器上下扫描范围") ?? GetMappedFloat(data, "pitch_scan_angle", "俯仰方位(度)", "传感器上下扫描范围");
+        if (pitchScan.HasValue) state.pitchScanAngle = pitchScan.Value;
+        string radar = GetMappedString(token, "radar_status", "探测器状态", "雷达状态") ?? GetMappedString(data, "radar_status", "探测器状态", "雷达状态");
+        if (radar != null) state.radarStatus = radar;
+
+        latestStatesByTrack[trackId] = state;
+        UpsertSensorSnapshotUnsafe(trackId, detector, rangeType, detectRange, yawAngle, pitchAngle, center, center1, yawScan, pitchScan, radar, state.flightTime);
+        if (string.IsNullOrWhiteSpace(primaryTrackId))
+            primaryTrackId = trackId;
+    }
+
+    private void UpsertSensorSnapshotUnsafe(
+        string trackId,
+        string detector,
+        string rangeType,
+        float? detectRange,
+        float? yawAngle,
+        float? pitchAngle,
+        string center,
+        string center1,
+        float? yawScan,
+        float? pitchScan,
+        string radarStatus,
+        string flightTime)
+    {
+        if (string.IsNullOrWhiteSpace(trackId) || string.IsNullOrWhiteSpace(detector))
+            return;
+
+        detector = detector.Trim();
+        string key = trackId + "|" + detector;
+        if (!latestSensorsByKey.TryGetValue(key, out var sensor) || sensor == null)
+            sensor = new TrackTimetableState { trackId = trackId, detectorType = detector };
+
+        sensor.trackId = trackId;
+        sensor.detectorType = detector;
+        if (!string.IsNullOrWhiteSpace(flightTime) && IsNewerFlightTime(flightTime, sensor.flightTime))
+            sensor.flightTime = flightTime;
+        if (rangeType != null) sensor.rangeType = rangeType;
+        if (detectRange.HasValue) sensor.detectRange = detectRange.Value;
+        if (yawAngle.HasValue) sensor.yawAngle = yawAngle.Value;
+        if (pitchAngle.HasValue) sensor.pitchAngle = pitchAngle.Value;
+        if (center != null) sensor.centerPoint = center;
+        if (center1 != null) sensor.centerPoint1 = center1;
+        if (yawScan.HasValue) sensor.yawScanAngle = yawScan.Value;
+        if (pitchScan.HasValue) sensor.pitchScanAngle = pitchScan.Value;
+        if (radarStatus != null) sensor.radarStatus = radarStatus;
+        latestSensorsByKey[key] = sensor;
+    }
+
+    private void MergePositionFromTokenUnsafe(string trackId, string frameFlightTime, JToken data, JToken token)
+    {
+        double? lng = GetMappedDouble(token, "lng") ?? GetMappedDouble(data, "lng");
+        double? lat = GetMappedDouble(token, "lat") ?? GetMappedDouble(data, "lat");
+        float? alt = GetMappedFloat(token, "alt") ?? GetMappedFloat(token, "hight") ?? GetMappedFloat(data, "alt") ?? GetMappedFloat(data, "hight");
+        float? heading = GetMappedFloat(token, "heading") ?? GetMappedFloat(data, "heading");
+        float? pitch = GetMappedFloat(token, "pitch") ?? GetMappedFloat(data, "pitch");
+        float? roll = GetMappedFloat(token, "roll") ?? GetMappedFloat(data, "roll");
+
+        if (!lng.HasValue && !lat.HasValue && !alt.HasValue && !heading.HasValue && !pitch.HasValue && !roll.HasValue)
+            return;
+
+        latestPositionsByTrack.TryGetValue(trackId, out var prev);
+        var position = prev ?? new TrackPosition { trackId = trackId };
+        position.trackId = trackId;
+        if (!string.IsNullOrWhiteSpace(frameFlightTime))
+            position.flightTime = frameFlightTime;
+        if (lng.HasValue) position.lng = lng.Value;
+        if (lat.HasValue) position.lat = lat.Value;
+        if (alt.HasValue) position.alt = alt.Value;
+        if (heading.HasValue) position.heading = heading.Value;
+        if (pitch.HasValue) position.pitch = pitch.Value;
+        if (roll.HasValue) position.roll = roll.Value;
+
+        latestPositionsByTrack[trackId] = position;
+        if (string.IsNullOrWhiteSpace(primaryTrackId))
+            primaryTrackId = trackId;
+        UpdateTurnRate(trackId, position);
     }
 
     private void ParseCycleTableData(JToken data, JToken envelope = null)
@@ -1196,16 +1570,27 @@ public class FlightDataStreamReceiver : MonoBehaviour
         string messageFlightTime = GetFlightTime(data, envelope);
         PublishFlightTime(messageFlightTime);
 
-        var recordsToken = data["records"];
+        // 协议是 data.records；数据端也可能把 lng/hight 直接放在 data 上。
+        var recordsToken = data["records"] ?? data["record"] ?? data["cycle"] ?? data["flightStates"];
         if (recordsToken == null)
         {
-            return;
+            if (GetPropertyIgnoreCase(data, "lng") != null ||
+                GetPropertyIgnoreCase(data, "lat") != null ||
+                GetPropertyIgnoreCase(data, "hight") != null ||
+                GetPropertyIgnoreCase(data, "alt") != null)
+            {
+                recordsToken = data;
+            }
+            else
+            {
+                return;
+            }
         }
 
         lock (dataLock)
         {
             string flightTime = messageFlightTime;
-            string dataTrackId = GetString(data, "trackId");
+            string dataTrackId = GetMappedString(data, "trackId");
             if (latestCycleFlightTime != flightTime)
             {
                 latestCycleRecords.Clear();
@@ -1225,6 +1610,16 @@ public class FlightDataStreamReceiver : MonoBehaviour
                 ParseCycleRecordUnsafe(flightTime, dataTrackId, recordsToken);
             }
         }
+
+        if (!cycleTableSummaryLogged)
+        {
+            cycleTableSummaryLogged = true;
+            var sample = recordsToken is JArray arr && arr.Count > 0 ? arr[0] : recordsToken;
+            string keys = sample is JObject obj
+                ? string.Join(",", obj.Properties().Select(p => p.Name))
+                : sample?.Type.ToString();
+            Log($"CYCLE_TABLE_DATA first frame: flightTime={messageFlightTime ?? "-"}, trackId={GetMappedString(data, "trackId") ?? "-"}, keys={keys}");
+        }
     }
 
     private void ParseCycleRecordUnsafe(string flightTime, string dataTrackId, JToken recordToken)
@@ -1235,17 +1630,17 @@ public class FlightDataStreamReceiver : MonoBehaviour
         }
 
         // 飞机ID优先用 data 层级的 trackId（如 "UAV-001"），不是 records 内部的
-        string trackId = dataTrackId ?? GetString(recordToken, "trackId");
-        float lng = GetFloat(recordToken, "lng") ?? 0f;
-        float lat = GetFloat(recordToken, "lat") ?? 0f;
-        float alt = GetFloat(recordToken, "alt") ?? 0f;
-        float heading = GetFloat(recordToken, "heading") ?? 0f;
-        float pitch = GetFloat(recordToken, "pitch") ?? 0f;
-        float roll = GetFloat(recordToken, "roll") ?? 0f;
+        string trackId = dataTrackId ?? GetMappedString(recordToken, "trackId");
+        double? lng = GetMappedDouble(recordToken, "lng");
+        double? lat = GetMappedDouble(recordToken, "lat");
+        float? alt = GetMappedFloat(recordToken, "alt") ?? GetMappedFloat(recordToken, "hight");
+        float? heading = GetMappedFloat(recordToken, "heading");
+        float? pitch = GetMappedFloat(recordToken, "pitch");
+        float? roll = GetMappedFloat(recordToken, "roll");
 
         if (string.IsNullOrWhiteSpace(trackId))
         {
-            trackId = ResolveTrackIdForCycleRecordUnsafe(lng, lat);
+            trackId = ResolveTrackIdForCycleRecordUnsafe(lng ?? 0d, lat ?? 0d);
         }
 
         int cycleId = GetInt(recordToken, "cycleId") ?? 0;
@@ -1255,13 +1650,13 @@ public class FlightDataStreamReceiver : MonoBehaviour
             flightTime = flightTime,
             trackId = trackId,
             cycleId = cycleId,
-            lng = lng,
-            lat = lat,
-            alt = alt,
-            heading = heading,
-            pitch = pitch,
-            roll = roll,
-            radarStatus = GetString(recordToken, "radar_status") ?? string.Empty,
+            lng = lng ?? 0d,
+            lat = lat ?? 0d,
+            alt = alt ?? 0f,
+            heading = heading ?? 0f,
+            pitch = pitch ?? 0f,
+            roll = roll ?? 0f,
+            radarStatus = GetMappedString(recordToken, "radar_status", "探测器状态", "雷达状态") ?? string.Empty,
         };
 
         latestCycleRecords.Add(record);
@@ -1269,30 +1664,129 @@ public class FlightDataStreamReceiver : MonoBehaviour
         if (!string.IsNullOrWhiteSpace(trackId))
         {
             latestCycleUpdatedTrackIds.Add(trackId);
-            if (latestStatesByTrack.TryGetValue(trackId, out var state))
+            MergeTimetableStateUnsafe(trackId, flightTime, null, recordToken);
+            MergePositionFromTokenUnsafe(trackId, flightTime, null, recordToken);
+            MergeFieldBagUnsafe(trackId, null, recordToken);
+            ApplyFieldBagToPositionUnsafe(trackId, flightTime);
+        }
+    }
+
+    private void ApplyFieldBagToPositionUnsafe(string trackId, string frameFlightTime)
+    {
+        if (string.IsNullOrWhiteSpace(trackId) ||
+            !latestValuesByTrack.TryGetValue(trackId, out var bag) || bag == null)
+            return;
+
+        double? lng = ReadBagDouble(bag, "lng");
+        double? lat = ReadBagDouble(bag, "lat");
+        float? alt = ReadBagFloat(bag, "hight") ?? ReadBagFloat(bag, "alt") ?? ReadBagFloat(bag, "height");
+        float? heading = ReadBagFloat(bag, "heading");
+        float? pitch = ReadBagFloat(bag, "pitch");
+        float? roll = ReadBagFloat(bag, "roll");
+        if (!lng.HasValue && !lat.HasValue && !alt.HasValue && !heading.HasValue && !pitch.HasValue && !roll.HasValue)
+            return;
+
+        latestPositionsByTrack.TryGetValue(trackId, out var prev);
+        var position = prev ?? new TrackPosition { trackId = trackId };
+        position.trackId = trackId;
+        if (!string.IsNullOrWhiteSpace(frameFlightTime))
+            position.flightTime = frameFlightTime;
+        if (lng.HasValue) position.lng = lng.Value;
+        if (lat.HasValue) position.lat = lat.Value;
+        if (alt.HasValue) position.alt = alt.Value;
+        if (heading.HasValue) position.heading = heading.Value;
+        if (pitch.HasValue) position.pitch = pitch.Value;
+        if (roll.HasValue) position.roll = roll.Value;
+        latestPositionsByTrack[trackId] = position;
+        if (string.IsNullOrWhiteSpace(primaryTrackId))
+            primaryTrackId = trackId;
+        UpdateTurnRate(trackId, position);
+    }
+
+    private static float? ReadBagFloat(Dictionary<string, string> bag, string key)
+    {
+        if (bag == null || string.IsNullOrWhiteSpace(key))
+            return null;
+        if (!bag.TryGetValue(key, out string text) || string.IsNullOrWhiteSpace(text))
+            return null;
+        if (float.TryParse(text, System.Globalization.NumberStyles.Float,
+            System.Globalization.CultureInfo.InvariantCulture, out float parsed))
+            return parsed;
+        return null;
+    }
+
+    private static double? ReadBagDouble(Dictionary<string, string> bag, string key)
+    {
+        if (bag == null || string.IsNullOrWhiteSpace(key))
+            return null;
+        if (!bag.TryGetValue(key, out string text) || string.IsNullOrWhiteSpace(text))
+            return null;
+        if (double.TryParse(text, System.Globalization.NumberStyles.Float,
+            System.Globalization.CultureInfo.InvariantCulture, out double parsed))
+            return parsed;
+        return null;
+    }
+
+    private void MergeFieldBagUnsafe(string trackId, JToken data, JToken token)
+    {
+        if (string.IsNullOrWhiteSpace(trackId))
+            return;
+        if (!latestValuesByTrack.TryGetValue(trackId, out var bag) || bag == null)
+        {
+            bag = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+            latestValuesByTrack[trackId] = bag;
+        }
+
+        MergeTokenIntoFieldBagUnsafe(bag, token);
+        if (data != null && !ReferenceEquals(data, token))
+            MergeTokenIntoFieldBagUnsafe(bag, data);
+    }
+
+    private void MergeTokenIntoFieldBagUnsafe(Dictionary<string, string> bag, JToken token)
+    {
+        if (!(token is JObject obj) || bag == null)
+            return;
+
+        foreach (var property in obj.Properties())
+        {
+            string name = property.Name;
+            if (string.IsNullOrWhiteSpace(name) ||
+                name == "records" || name == "record" || name == "event" ||
+                name == "flightStates" || name == "tracks" || name == "plans" || name == "positions")
+                continue;
+
+            var value = property.Value;
+            if (value == null || value.Type == JTokenType.Null || value.Type == JTokenType.Object || value.Type == JTokenType.Array)
+                continue;
+
+            string text = value.Type == JTokenType.Float || value.Type == JTokenType.Integer
+                ? value.ToString(Newtonsoft.Json.Formatting.None)
+                : value.ToString();
+            if (string.IsNullOrWhiteSpace(text))
+                continue;
+
+            bag[name] = text;
+            if (dataFields.Count == 0)
+                continue;
+
+            foreach (var kv in dataFields)
             {
-                state.radarStatus = record.radarStatus;
+                if (string.Equals(kv.Key, name, StringComparison.OrdinalIgnoreCase))
+                {
+                    bag[kv.Key] = text;
+                    break;
+                }
+                if (kv.Value == null)
+                    continue;
+                for (int i = 0; i < kv.Value.Count; i++)
+                {
+                    if (string.Equals(kv.Value[i], name, StringComparison.OrdinalIgnoreCase))
+                    {
+                        bag[kv.Key] = text;
+                        break;
+                    }
+                }
             }
-
-            var position = new TrackPosition
-            {
-                trackId = trackId,
-                flightTime = flightTime,
-                lng = lng,
-                lat = lat,
-                alt = alt,
-                heading = heading,
-                pitch = pitch,
-                roll = roll,
-            };
-
-            latestPositionsByTrack[trackId] = position;
-            if (string.IsNullOrWhiteSpace(primaryTrackId))
-            {
-                primaryTrackId = trackId;
-            }
-
-            UpdateTurnRate(trackId, position);
         }
     }
 
@@ -1314,7 +1808,7 @@ public class FlightDataStreamReceiver : MonoBehaviour
         return TryParseElapsedTime(flightTime, out _) || TryParseLocalTime(flightTime, out _);
     }
 
-    private string ResolveTrackIdForCycleRecordUnsafe(float lng, float lat)
+    private string ResolveTrackIdForCycleRecordUnsafe(double lng, double lat)
     {
         string bestTrackId = null;
         float bestDistance = float.MaxValue;
@@ -1326,9 +1820,9 @@ public class FlightDataStreamReceiver : MonoBehaviour
                 continue;
             }
 
-            float dLng = kv.Value.lng - lng;
-            float dLat = kv.Value.lat - lat;
-            float distance = dLng * dLng + dLat * dLat;
+            double dLng = kv.Value.lng - lng;
+            double dLat = kv.Value.lat - lat;
+            float distance = (float)(dLng * dLng + dLat * dLat);
             if (distance < bestDistance)
             {
                 bestDistance = distance;
@@ -1463,7 +1957,7 @@ public class FlightDataStreamReceiver : MonoBehaviour
 
     private void LogIncomingType(string type)
     {
-        if (enableDebugLog && logIncomingMessageTypes)
+        if (enableDebugLog && (logIncomingMessageTypes || logIncomingRawPayloads))
         {
             Debug.Log($"[FlightDataStreamReceiver] Received message type={type}");
         }

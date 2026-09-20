@@ -1,9 +1,16 @@
 using System;
+using System.Globalization;
 using System.IO;
+using System.Text;
 using UnityEngine;
 
 /// <summary>
-/// 经纬度到游戏坐标的映射配置，支持从外部JSON 文件加载。/// 配置文件路径：Assets/StreamingAssets/GeoMapping.json
+/// 经纬度 ↔ 游戏坐标映射。打包后改 JSON 即可，不必重编。
+/// 查找顺序：
+/// 1. 可执行文件同目录 GeoMapping.json（打包后优先放这里）
+/// 2. persistentDataPath/GeoMapping.json
+/// 3. StreamingAssets/GeoMapping.json（工程内默认，打包进 *_Data/StreamingAssets）
+/// 运行中改文件会自动热加载。
 /// </summary>
 public class GeoMappingConfig : MonoBehaviour
 {
@@ -35,35 +42,50 @@ public class GeoMappingConfig : MonoBehaviour
     private PlaneDisplayController planeDisplayController;
 
     public MappingData Mapping => mapping;
+    public string ActiveConfigPath => configPath;
 
     private void Start()
     {
-        configPath = Path.Combine(Application.streamingAssetsPath, configFileName);
+        ResolveConfigPath();
         LoadFromFile();
-        if (applyOnStart) Apply();
+        if (applyOnStart)
+            Apply();
     }
 
     private void Update()
     {
-        if (autoReloadOnChange && File.Exists(configPath))
+        if (!autoReloadOnChange || string.IsNullOrEmpty(configPath) || !File.Exists(configPath))
+            return;
+
+        var writeTime = File.GetLastWriteTime(configPath);
+        if (writeTime != lastFileWrite)
         {
-            var writeTime = File.GetLastWriteTime(configPath);
-            if (writeTime != lastFileWrite)
-            {
-                LoadFromFile();
-                Apply();
-            }
+            LoadFromFile();
+            Apply();
         }
+    }
+
+    private void ResolveConfigPath()
+    {
+        string besideExe = Path.Combine(Directory.GetParent(Application.dataPath)?.FullName ?? Application.dataPath, configFileName);
+        string persistent = Path.Combine(Application.persistentDataPath, configFileName);
+        string streaming = Path.Combine(Application.streamingAssetsPath, configFileName);
+
+        if (File.Exists(besideExe))
+            configPath = besideExe;
+        else if (File.Exists(persistent))
+            configPath = persistent;
+        else
+            configPath = streaming;
     }
 
     public void LoadFromFile()
     {
         if (string.IsNullOrEmpty(configPath))
-            configPath = Path.Combine(Application.streamingAssetsPath, configFileName);
+            ResolveConfigPath();
 
         if (!File.Exists(configPath))
         {
-            // Create default file
             SaveToFile();
             return;
         }
@@ -76,7 +98,7 @@ public class GeoMappingConfig : MonoBehaviour
             {
                 mapping = loaded;
                 lastFileWrite = File.GetLastWriteTime(configPath);
-                Debug.Log($"[GeoMappingConfig] Loaded from {configPath}: lon[{mapping.lonMin},{mapping.lonMax}] lat[{mapping.latMin},{mapping.latMax}] →x[{mapping.xMin},{mapping.xMax}] y[{mapping.yMin},{mapping.yMax}]");
+                Debug.Log($"[GeoMappingConfig] Loaded from {configPath}: lon[{mapping.lonMin},{mapping.lonMax}] lat[{mapping.latMin},{mapping.latMax}] → x[{mapping.xMin},{mapping.xMax}] y[{mapping.yMin},{mapping.yMax}]");
             }
         }
         catch (Exception e)
@@ -89,12 +111,14 @@ public class GeoMappingConfig : MonoBehaviour
     {
         try
         {
+            if (string.IsNullOrEmpty(configPath))
+                ResolveConfigPath();
+
             var dir = Path.GetDirectoryName(configPath);
             if (!string.IsNullOrEmpty(dir) && !Directory.Exists(dir))
                 Directory.CreateDirectory(dir);
 
-            var json = JsonUtility.ToJson(mapping, true);
-            File.WriteAllText(configPath, json);
+            File.WriteAllText(configPath, FormatMappingJson(mapping), new UTF8Encoding(false));
             lastFileWrite = File.GetLastWriteTime(configPath);
             Debug.Log($"[GeoMappingConfig] Saved to {configPath}");
         }
@@ -114,7 +138,7 @@ public class GeoMappingConfig : MonoBehaviour
             planeDisplayController.SetLongitudeRange(mapping.lonMin, mapping.lonMax);
             planeDisplayController.SetLatitudeRange(mapping.latMin, mapping.latMax);
             planeDisplayController.SetGameRange(mapping.xMin, mapping.xMax, mapping.yMin, mapping.yMax);
-            Debug.Log("[GeoMappingConfig] Applied to PlaneDisplayController");
+            Debug.Log($"[GeoMappingConfig] Applied to PlaneDisplayController from {configPath}");
         }
         else
         {
@@ -125,6 +149,7 @@ public class GeoMappingConfig : MonoBehaviour
     [ContextMenu("Reload Config")]
     public void Reload()
     {
+        ResolveConfigPath();
         LoadFromFile();
         Apply();
     }
@@ -133,5 +158,22 @@ public class GeoMappingConfig : MonoBehaviour
     public void SaveCurrent()
     {
         SaveToFile();
+    }
+
+    private static string FormatMappingJson(MappingData data)
+    {
+        var inv = CultureInfo.InvariantCulture;
+        var sb = new StringBuilder();
+        sb.AppendLine("{");
+        sb.AppendLine("  \"lonMin\": " + data.lonMin.ToString("0.####", inv) + ",");
+        sb.AppendLine("  \"lonMax\": " + data.lonMax.ToString("0.####", inv) + ",");
+        sb.AppendLine("  \"latMin\": " + data.latMin.ToString("0.####", inv) + ",");
+        sb.AppendLine("  \"latMax\": " + data.latMax.ToString("0.####", inv) + ",");
+        sb.AppendLine("  \"xMin\": " + data.xMin.ToString("0.###", inv) + ",");
+        sb.AppendLine("  \"xMax\": " + data.xMax.ToString("0.###", inv) + ",");
+        sb.AppendLine("  \"yMin\": " + data.yMin.ToString("0.###", inv) + ",");
+        sb.AppendLine("  \"yMax\": " + data.yMax.ToString("0.###", inv));
+        sb.AppendLine("}");
+        return sb.ToString();
     }
 }

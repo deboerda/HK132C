@@ -1,20 +1,24 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
+using System.Text.RegularExpressions;
 using UnityEngine;
+using UnityEngine.UI;
 using UnityEngine.UIElements;
 
 /// <summary>
-/// 时间尺度刻度尺 — 使用 UI Toolkit 绘制
-/// 根据 FlightPlaybackPanel 的时间范围自动生成刻度和数字
+/// 时间尺度：优先驱动场景里已有的 UGUI 刻度（0s/120s/…），
+/// 收到 TASK_TIME_INFO 后改成任务时钟（如 08:00 … 08:30）。
+/// 若挂了 UIDocument 仍走 UI Toolkit 作为补充。
 /// </summary>
 [ExecuteAlways]
 public class Unity_TimeScale : MonoBehaviour
 {
-    [Header("UI References")]
+    [Header("UI Toolkit (optional)")]
     [SerializeField] private UIDocument uiDocument;
     [SerializeField] private StyleSheet styleSheet;
 
-    [Header("Layout")]
+    [Header("Layout (UI Toolkit only)")]
     [SerializeField] private Vector2 displaySize = new Vector2(1200f, 40f);
     [SerializeField] private Vector2 screenPosition = new Vector2(360f, 920f);
 
@@ -44,9 +48,22 @@ public class Unity_TimeScale : MonoBehaviour
     private string endTimeStr = "";
     private bool hasTimeRange;
 
+    private static readonly Regex TickLabelNameRegex = new Regex(@"^Label_(\d+)$", RegexOptions.Compiled);
+    private static readonly string[] TimeFormats =
+    {
+        "yyyy-MM-dd HH:mm:ss.ffffff",
+        "yyyy-MM-dd HH:mm:ss.fff",
+        "yyyy-MM-dd HH:mm:ss.ff",
+        "yyyy-MM-dd HH:mm:ss.f",
+        "yyyy-MM-dd HH:mm:ss",
+        "yyyy/M/d H:mm:ss",
+        "HH:mm:ss",
+    };
+
     private void OnEnable()
     {
         EnsureRoot();
+        ApplyToUgui();
     }
 
     private void EnsureRoot()
@@ -78,6 +95,8 @@ public class Unity_TimeScale : MonoBehaviour
 
     private void BuildUI()
     {
+        if (root == null)
+            return;
         root.Clear();
 
         rulerRoot = new VisualElement { name = "TimeScaleRoot" };
@@ -90,14 +109,12 @@ public class Unity_TimeScale : MonoBehaviour
         rulerRoot.style.flexDirection = FlexDirection.Column;
         rulerRoot.style.overflow = Overflow.Hidden;
 
-        // Top: ticks area
         ticksContainer = new VisualElement { name = "TicksContainer" };
         ticksContainer.style.flexGrow = 1;
         ticksContainer.style.overflow = Overflow.Hidden;
         ticksContainer.style.position = Position.Relative;
         rulerRoot.Add(ticksContainer);
 
-        // Bottom: time range label
         timeRangeLabel = new Label("--:--:-- ~ --:--:--");
         timeRangeLabel.style.fontSize = fontSize;
         timeRangeLabel.style.color = numberColor;
@@ -110,39 +127,91 @@ public class Unity_TimeScale : MonoBehaviour
         DrawTicks();
     }
 
-    /// <summary>
-    /// Called by FlightPlaybackPanel to set the time range.
-    /// </summary>
     public void SetTimeRange(float minSeconds, float maxSeconds, string startLocalTime, string endLocalTime = null)
     {
         minSec = minSeconds;
         maxSec = Mathf.Max(minSeconds, maxSeconds);
         startTimeStr = startLocalTime ?? "";
         endTimeStr = endLocalTime ?? "";
-        hasTimeRange = maxSec > minSec;
+        hasTimeRange = maxSec > minSec + 0.01f;
         EnsureRoot();
         DrawTicks();
         UpdateRangeLabel();
+        ApplyToUgui();
     }
 
-    /// <summary>
-    /// Called by FlightPlaybackPanel to update current progress position.
-    /// </summary>
     public void SetCurrentTime(float currentSeconds)
     {
         currentSec = Mathf.Clamp(currentSeconds, minSec, maxSec);
     }
 
+    private void ApplyToUgui()
+    {
+        var texts = GetComponentsInChildren<Text>(true);
+        var tickLabels = new List<Text>();
+        Text rangeTitle = null;
+
+        for (int i = 0; i < texts.Length; i++)
+        {
+            var t = texts[i];
+            if (t == null)
+                continue;
+            if (t.gameObject.name == "TimeScaleText")
+            {
+                rangeTitle = t;
+                continue;
+            }
+            if (TickLabelNameRegex.IsMatch(t.gameObject.name) ||
+                (t.transform.parent != null && t.transform.parent.name == "TimeScaleLabels"))
+                tickLabels.Add(t);
+        }
+
+        tickLabels.Sort((a, b) =>
+        {
+            int na = ParseLabelIndex(a.gameObject.name);
+            int nb = ParseLabelIndex(b.gameObject.name);
+            if (na >= 0 && nb >= 0 && na != nb)
+                return na.CompareTo(nb);
+            return a.rectTransform.anchoredPosition.x.CompareTo(b.rectTransform.anchoredPosition.x);
+        });
+
+        int n = tickLabels.Count;
+        float range = maxSec - minSec;
+        if (n > 0 && range > 0.01f)
+        {
+            for (int i = 0; i < n; i++)
+            {
+                float seconds = n == 1 ? minSec : minSec + range * i / (n - 1);
+                tickLabels[i].text = FormatTickValue(seconds);
+            }
+        }
+
+        // 有刻度后不再显示 TimeScaleText（起止已在左右端点）
+        if (rangeTitle != null)
+            rangeTitle.gameObject.SetActive(false);
+    }
+
+    private static int ParseLabelIndex(string name)
+    {
+        if (string.IsNullOrEmpty(name))
+            return -1;
+        var m = TickLabelNameRegex.Match(name);
+        if (!m.Success)
+            return -1;
+        return int.TryParse(m.Groups[1].Value, out int n) ? n : -1;
+    }
+
     private void DrawTicks()
     {
-        if (ticksContainer == null) return;
+        if (ticksContainer == null)
+            return;
         ticksContainer.Clear();
 
         float width = displaySize.x;
-        float height = displaySize.y - 18f; // minus label
-        if (height < 10f) height = 10f;
+        float height = displaySize.y - 18f;
+        if (height < 10f)
+            height = 10f;
 
-        // Horizontal baseline
         var baseline = new VisualElement();
         baseline.style.position = Position.Absolute;
         baseline.style.left = 0f;
@@ -152,12 +221,12 @@ public class Unity_TimeScale : MonoBehaviour
         baseline.style.backgroundColor = lineColor;
         ticksContainer.Add(baseline);
 
-        // Determine major interval
         float range = maxSec - minSec;
-        if (range <= 0f) return;
+        if (range <= 0f)
+            return;
 
         float majorInterval = ChooseMajorInterval(range, 8);
-        float minorInterval = majorInterval / minorTicksPerMajor;
+        float minorInterval = majorInterval / Mathf.Max(1, minorTicksPerMajor);
 
         var tickValues = new List<float>();
         void AddTick(float value)
@@ -227,7 +296,8 @@ public class Unity_TimeScale : MonoBehaviour
 
     private void UpdateRangeLabel()
     {
-        if (timeRangeLabel == null) return;
+        if (timeRangeLabel == null)
+            return;
 
         string startStr = FormatClock(startTimeStr, minSec);
         string endStr = !string.IsNullOrWhiteSpace(endTimeStr)
@@ -235,7 +305,7 @@ public class Unity_TimeScale : MonoBehaviour
             : FormatClock(startTimeStr, maxSec);
         if (startStr == null || endStr == null)
         {
-            timeRangeLabel.text = hasTimeRange ? $"{minSec:F0}s ~ {maxSec:F0}s" : "--:--:-- ~ --:--:--";
+            timeRangeLabel.text = hasTimeRange ? $"{FormatElapsed(minSec)} ~ {FormatElapsed(maxSec)}" : "--:--:-- ~ --:--:--";
             return;
         }
         timeRangeLabel.text = $"{startStr} ~ {endStr}";
@@ -243,7 +313,7 @@ public class Unity_TimeScale : MonoBehaviour
 
     private string FormatTickValue(float seconds)
     {
-        if (Mathf.Abs(seconds - maxSec) < 0.001f && !string.IsNullOrWhiteSpace(endTimeStr))
+        if (Mathf.Abs(seconds - maxSec) < 0.05f && !string.IsNullOrWhiteSpace(endTimeStr))
         {
             string endClock = FormatClock(endTimeStr, 0f);
             if (endClock != null)
@@ -253,13 +323,23 @@ public class Unity_TimeScale : MonoBehaviour
         string clock = FormatClock(startTimeStr, seconds);
         if (clock != null)
             return clock;
-        return $"{seconds:F0}s";
+        return FormatElapsed(seconds);
+    }
+
+    private static string FormatElapsed(float seconds)
+    {
+        seconds = Mathf.Max(0f, seconds);
+        if (seconds >= 3600f)
+            return $"{seconds / 3600f:0.#}h";
+        if (seconds >= 60f && Mathf.Abs(seconds % 60f) < 0.05f)
+            return $"{seconds / 60f:0}m";
+        return $"{seconds:0}s";
     }
 
     private static string FormatClock(string timeStr, float addSeconds)
     {
         if (TryParseLocalTime(timeStr, out var dt))
-            return dt.AddSeconds(addSeconds).ToString("HH:mm:ss");
+            return dt.AddSeconds(addSeconds).ToString("HH:mm");
         return null;
     }
 
@@ -268,7 +348,8 @@ public class Unity_TimeScale : MonoBehaviour
         float raw = range / targetDivisions;
         float[] niceSteps = { 1f, 2f, 5f, 10f, 15f, 30f, 60f, 120f, 300f, 600f, 900f, 1800f, 3600f };
         foreach (float step in niceSteps)
-            if (step >= raw) return step;
+            if (step >= raw)
+                return step;
         return Mathf.Ceil(raw / 60f) * 60f;
     }
 
@@ -277,27 +358,14 @@ public class Unity_TimeScale : MonoBehaviour
         time = default;
         if (string.IsNullOrWhiteSpace(value))
             return false;
-        string[] formats =
-        {
-            "yyyy-MM-dd HH:mm:ss.fff",
-            "yyyy-MM-dd HH:mm:ss.ff",
-            "yyyy-MM-dd HH:mm:ss.f",
-            "yyyy-MM-dd HH:mm:ss",
-            "yyyy/M/d H:mm:ss",
-            "yyyy/MM/dd HH:mm:ss",
-        };
-        if (DateTime.TryParseExact(value.Trim(), formats,
-            System.Globalization.CultureInfo.InvariantCulture,
-            System.Globalization.DateTimeStyles.None, out time))
+        if (DateTime.TryParseExact(
+            value.Trim(),
+            TimeFormats,
+            CultureInfo.InvariantCulture,
+            DateTimeStyles.None,
+            out time))
             return true;
-        return DateTime.TryParse(value, out time);
-    }
-
-    private static string FormatTimeShort(string fullTime)
-    {
-        if (string.IsNullOrWhiteSpace(fullTime) || fullTime.Length < 19)
-            return "--:--:--";
-        return fullTime.Substring(11, 8);
+        return DateTime.TryParse(value, CultureInfo.InvariantCulture, DateTimeStyles.AllowWhiteSpaces, out time);
     }
 
 #if UNITY_EDITOR
@@ -306,9 +374,7 @@ public class Unity_TimeScale : MonoBehaviour
         if (!Application.isPlaying && uiDocument != null && root == null)
             root = uiDocument.rootVisualElement;
         if (root != null)
-        {
             BuildUI();
-        }
     }
 #endif
 }

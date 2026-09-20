@@ -25,7 +25,8 @@ public class UDPDataReceiver : MonoBehaviour
     public bool enableDebug = true; // 是否启用调试信息
     public bool autoStart = false; // 手动启用模式，默认关闭
     
-    // 飞机数据存储
+    // 飞机数据存储（仅运行时填充，不参与 Unity 序列化，消除 UAC1009）
+    [NonSerialized]
     public Dictionary<string, string> planeData = new Dictionary<string, string>();
     public int numberOfPlanes = 3; // 飞机数量
     

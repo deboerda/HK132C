@@ -28,7 +28,8 @@ public class FlightProgressController : MonoBehaviour
     [System.Serializable]
     public class ViolationMarker
     {
-        public float normalizedPos; // 0-1 on the slider
+        public float flightTime; // 打点时的任务秒，用当前时间轴换算位置，避免时长变化后跑到滑块前面
+        public float normalizedPos; // 0-1 on the slider（由 flightTime 实时换算）
         public string info; // e.g. "UAV-001 alt超限"
         public string key;  // trackId|fieldKey
         public Color color;
@@ -124,7 +125,17 @@ public class FlightProgressController : MonoBehaviour
             return;
 
         SyncLiveFlightTime();
-        float normalized = Mathf.Clamp01(progressSlider.normalizedValue);
+        float t = currentFlightTime;
+        if (cachedPlaybackPanel != null)
+            t = cachedPlaybackPanel.CurrentFlightTime;
+        t = Mathf.Clamp(t, minFlightTime, maxFlightTime);
+        float normalized = ToNormalized(t);
+        // 不允许打在滑块尚未到达的位置
+        float sliderNorm = progressSlider != null ? Mathf.Clamp01(progressSlider.normalizedValue) : normalized;
+        if (normalized > sliderNorm + 0.001f)
+            normalized = sliderNorm;
+        t = minFlightTime + normalized * Mathf.Max(0.001f, maxFlightTime - minFlightTime);
+
         if (color.a < 0.01f)
             color = markerColor;
         if (string.IsNullOrEmpty(key))
@@ -138,12 +149,13 @@ public class FlightProgressController : MonoBehaviour
 
         for (int i = 0; i < markers.Count; i++)
         {
-            if (markers[i].key == key && Mathf.Abs(markers[i].normalizedPos - normalized) < minGap)
+            if (markers[i].key == key && Mathf.Abs(ToNormalized(markers[i].flightTime) - normalized) < minGap)
                 return;
         }
 
         var marker = new ViolationMarker
         {
+            flightTime = t,
             normalizedPos = normalized,
             info = info,
             key = key,
@@ -250,7 +262,7 @@ public class FlightProgressController : MonoBehaviour
         markerGO.layer = progressSlider.gameObject.layer;
 
         var rt = markerGO.AddComponent<RectTransform>();
-        LayoutMarker(rt, marker.normalizedPos);
+        LayoutMarker(rt, ToNormalized(marker.flightTime));
 
         var img = markerGO.AddComponent<Image>();
         img.color = marker.color.a > 0.01f ? marker.color : markerColor;
@@ -269,7 +281,7 @@ public class FlightProgressController : MonoBehaviour
             var rt = markerObjects[i].GetComponent<RectTransform>();
             if (rt == null)
                 continue;
-            LayoutMarker(rt, markers[i].normalizedPos);
+            LayoutMarker(rt, ToNormalized(markers[i].flightTime));
         }
     }
 
@@ -306,5 +318,13 @@ public class FlightProgressController : MonoBehaviour
 
     public float GetCurrentFlightTime() => currentFlightTime;
     public float GetMaxFlightTime() => maxFlightTime;
-    public float GetNormalizedProgress() => Mathf.Clamp01((currentFlightTime - minFlightTime) / Mathf.Max(0.001f, maxFlightTime - minFlightTime));
+    public float GetNormalizedProgress() => ToNormalized(currentFlightTime);
+
+    private float ToNormalized(float flightTime)
+    {
+        float span = maxFlightTime - minFlightTime;
+        if (span <= 0.001f)
+            return 0f;
+        return Mathf.Clamp01((flightTime - minFlightTime) / span);
+    }
 }

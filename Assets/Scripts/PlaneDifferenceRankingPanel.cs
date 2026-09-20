@@ -25,6 +25,9 @@ public class PlaneDifferenceRankingPanel : MonoBehaviour
     [SerializeField] private Dropdown planeDropdown;
     [SerializeField] private RectTransform headerRoot;
     [SerializeField] private RectTransform contentRoot;
+    [SerializeField] private RectTransform rowTemplate;
+    [Tooltip("标题和数据列使用 Scene 里拖好的坐标；运行时只改文字。")]
+    [SerializeField] private bool preserveSceneLayout = true;
     [SerializeField] private bool autoCreateLayout = true;
     [SerializeField] private float selectorHeight = 34f;
     [SerializeField] private float headerHeight = 32f;
@@ -60,7 +63,7 @@ public class PlaneDifferenceRankingPanel : MonoBehaviour
             font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
         }
 
-        if (autoCreateLayout)
+        if (autoCreateLayout && !preserveSceneLayout)
         {
             EnsureLayoutObjects();
         }
@@ -71,15 +74,25 @@ public class PlaneDifferenceRankingPanel : MonoBehaviour
             planeDropdown.onValueChanged.AddListener(OnDropdownChanged);
         }
 
-        EnsureVerticalLayout(headerRoot, false);
-        EnsureVerticalLayout(contentRoot, true);
-        ApplyHeaderViewportInset();
+        if (!preserveSceneLayout)
+        {
+            EnsureVerticalLayout(headerRoot, false);
+            EnsureVerticalLayout(contentRoot, true);
+            ApplyHeaderViewportInset();
+        }
 
         if (headerRoot != null)
         {
             headerRow = FindOrCreateHeaderRow();
             SetRowTexts(headerRow, "#", "飞机编号", "距离差", "高度差", "方位角差");
         }
+        CollectSceneDataRows();
+    }
+
+    private void CollectSceneDataRows()
+    {
+        if (rowTemplate == null)
+            rowTemplate = PanelSceneLayout.FindRowTemplate(contentRoot, rowTemplate);
     }
 
     private void Update()
@@ -219,10 +232,10 @@ public class PlaneDifferenceRankingPanel : MonoBehaviour
 
     private static float CalculateDistanceMeters(FlightDataStreamReceiver.TrackPosition a, FlightDataStreamReceiver.TrackPosition b)
     {
-        float lat1 = a.lat * Mathf.Deg2Rad;
-        float lat2 = b.lat * Mathf.Deg2Rad;
-        float dLat = (b.lat - a.lat) * Mathf.Deg2Rad;
-        float dLng = (b.lng - a.lng) * Mathf.Deg2Rad;
+        float lat1 = (float)a.lat * Mathf.Deg2Rad;
+        float lat2 = (float)b.lat * Mathf.Deg2Rad;
+        float dLat = (float)(b.lat - a.lat) * Mathf.Deg2Rad;
+        float dLng = (float)(b.lng - a.lng) * Mathf.Deg2Rad;
         float sinLat = Mathf.Sin(dLat * 0.5f);
         float sinLng = Mathf.Sin(dLng * 0.5f);
         float h = sinLat * sinLat + Mathf.Cos(lat1) * Mathf.Cos(lat2) * sinLng * sinLng;
@@ -631,7 +644,23 @@ public class PlaneDifferenceRankingPanel : MonoBehaviour
         {
             int index = rows.Count;
             Color bg = index % 2 == 0 ? oddRowBackground : evenRowBackground;
-            rows.Add(CreateRow(contentRoot, $"PlaneDifferenceRow_{index + 1}", bg, rowFontSize, false));
+            string rowName = $"PlaneDifferenceRow_{index + 1}";
+            RectTransform template = PanelSceneLayout.FindRowTemplate(contentRoot, rowTemplate);
+            if (template == null && rows.Count > 0)
+                template = rows[0].root;
+            RectTransform target = null;
+            if (preserveSceneLayout && index == 0 && template != null)
+            {
+                target = template;
+                target.gameObject.SetActive(true);
+                PanelSceneLayout.FreezeRowLayout(target);
+            }
+            else
+                target = PanelSceneLayout.GetOrCloneRow(contentRoot, rowName, preserveSceneLayout ? template : null);
+            if (target != null)
+                rows.Add(BindRow(target, bg, rowFontSize, false, true));
+            else
+                rows.Add(CreateRow(contentRoot, rowName, bg, rowFontSize, false));
         }
     }
 
@@ -672,19 +701,22 @@ public class PlaneDifferenceRankingPanel : MonoBehaviour
     {
         GameObject rowObject = rect.gameObject;
 
-        if (header)
+        if (!preserveExistingHeaderCells)
         {
-            StretchFull(rect);
-        }
-        else
-        {
-            rect.anchorMin = new Vector2(0f, 1f);
-            rect.anchorMax = new Vector2(1f, 1f);
-            rect.pivot = new Vector2(0.5f, 1f);
-            rect.anchoredPosition = Vector2.zero;
-            rect.sizeDelta = new Vector2(0f, rowHeight);
-            rect.offsetMin = new Vector2(0f, rect.offsetMin.y);
-            rect.offsetMax = new Vector2(0f, rect.offsetMax.y);
+            if (header)
+            {
+                StretchFull(rect);
+            }
+            else
+            {
+                rect.anchorMin = new Vector2(0f, 1f);
+                rect.anchorMax = new Vector2(1f, 1f);
+                rect.pivot = new Vector2(0.5f, 1f);
+                rect.anchoredPosition = Vector2.zero;
+                rect.sizeDelta = new Vector2(0f, rowHeight);
+                rect.offsetMin = new Vector2(0f, rect.offsetMin.y);
+                rect.offsetMax = new Vector2(0f, rect.offsetMax.y);
+            }
         }
 
         var image = rowObject.GetComponent<Image>();
@@ -704,12 +736,9 @@ public class PlaneDifferenceRankingPanel : MonoBehaviour
         layoutElement.preferredHeight = header ? 0f : rowHeight;
 
         var horizontal = rowObject.GetComponent<HorizontalLayoutGroup>();
-        if (preserveExistingHeaderCells)
+        if (preserveExistingHeaderCells || preserveSceneLayout)
         {
-            if (horizontal != null)
-            {
-                horizontal.enabled = false;
-            }
+            PanelSceneLayout.FreezeRowLayout(rect);
         }
         else
         {

@@ -27,6 +27,9 @@ public class PlaneInfoGrid : MonoBehaviour
     [Header("Layout")]
     [SerializeField] private RectTransform headerRoot;
     [SerializeField] private RectTransform contentRoot;
+    [SerializeField] private RectTransform rowTemplate;
+    [Tooltip("标题和数据列使用 Scene 里拖好的坐标；运行时只改文字。")]
+    [SerializeField] private bool preserveSceneLayout = true;
     [SerializeField] private bool autoCreateScrollLayout = false;
     [SerializeField] private float headerHeight = 34f;
     [SerializeField] private float rowHeight = 30f;
@@ -68,7 +71,8 @@ public class PlaneInfoGrid : MonoBehaviour
             headerRoot = contentRoot;
         }
 
-        ApplyHeaderViewportInset();
+        if (!preserveSceneLayout)
+            ApplyHeaderViewportInset();
 
         if (font == null)
         {
@@ -77,13 +81,23 @@ public class PlaneInfoGrid : MonoBehaviour
 
         EnsurePanelBackground();
 
-        EnsureLayout(headerRoot, false);
-        EnsureLayout(contentRoot, true);
+        if (!preserveSceneLayout)
+        {
+            EnsureLayout(headerRoot, false);
+            EnsureLayout(contentRoot, true);
+        }
         if (showHeader)
         {
             headerRow = FindOrCreateHeaderRow();
             SetRowTexts(headerRow, "#", "飞机编号", "经度", "纬度", "高度");
         }
+        CollectSceneDataRows();
+    }
+
+    private void CollectSceneDataRows()
+    {
+        if (rowTemplate == null)
+            rowTemplate = PanelSceneLayout.FindRowTemplate(contentRoot, rowTemplate);
     }
 
     private void EnsureScrollLayoutObjects()
@@ -236,6 +250,22 @@ public class PlaneInfoGrid : MonoBehaviour
 
         Undo.CollapseUndoOperations(Undo.GetCurrentGroup());
     }
+
+    private void OnValidate()
+    {
+        if (!preserveSceneLayout)
+            return;
+        if (headerRoot != null)
+        {
+            var header = headerRoot.Find("Header") as RectTransform;
+            PanelSceneLayout.FreezeRowLayout(header);
+        }
+        if (contentRoot != null)
+        {
+            for (int i = 0; i < contentRoot.childCount; i++)
+                PanelSceneLayout.FreezeRowLayout(contentRoot.GetChild(i) as RectTransform);
+        }
+    }
 #endif
 
     private static RectTransform FindOrCreateRect(RectTransform parent, string childName)
@@ -381,7 +411,23 @@ public class PlaneInfoGrid : MonoBehaviour
         {
             int index = rows.Count;
             Color bg = index % 2 == 0 ? oddRowBackground : evenRowBackground;
-            rows.Add(CreateRow(contentRoot, $"PlaneInfoRow_{index + 1}", bg, rowFontSize, false));
+            string rowName = $"PlaneInfoRow_{index + 1}";
+            RectTransform template = PanelSceneLayout.FindRowTemplate(contentRoot, rowTemplate);
+            if (template == null && rows.Count > 0)
+                template = rows[0].root;
+            RectTransform target = null;
+            if (preserveSceneLayout && index == 0 && template != null)
+            {
+                target = template;
+                target.gameObject.SetActive(true);
+                PanelSceneLayout.FreezeRowLayout(target);
+            }
+            else
+                target = PanelSceneLayout.GetOrCloneRow(contentRoot, rowName, preserveSceneLayout ? template : null);
+            if (target != null)
+                rows.Add(BindRow(target, bg, rowFontSize, false, true));
+            else
+                rows.Add(CreateRow(contentRoot, rowName, bg, rowFontSize, false));
         }
     }
 
@@ -392,7 +438,7 @@ public class PlaneInfoGrid : MonoBehaviour
             Transform existing = headerRoot.Find("Header");
             if (existing != null && existing.TryGetComponent(out RectTransform existingRect))
             {
-                return BindRow(existingRect, headerBackground, headerFontSize, true, true);
+                return BindRow(existingRect, headerBackground, headerFontSize, true, preserveSceneLayout);
             }
         }
 
@@ -422,19 +468,22 @@ public class PlaneInfoGrid : MonoBehaviour
     {
         GameObject rowObject = rect.gameObject;
 
-        if (header)
+        if (!preserveExistingHeaderCells)
         {
-            StretchFull(rect);
-        }
-        else
-        {
-            rect.anchorMin = new Vector2(0f, 1f);
-            rect.anchorMax = new Vector2(1f, 1f);
-            rect.pivot = new Vector2(0.5f, 1f);
-            rect.anchoredPosition = Vector2.zero;
-            rect.sizeDelta = new Vector2(0f, rowHeight);
-            rect.offsetMin = new Vector2(0f, rect.offsetMin.y);
-            rect.offsetMax = new Vector2(0f, rect.offsetMax.y);
+            if (header)
+            {
+                StretchFull(rect);
+            }
+            else
+            {
+                rect.anchorMin = new Vector2(0f, 1f);
+                rect.anchorMax = new Vector2(1f, 1f);
+                rect.pivot = new Vector2(0.5f, 1f);
+                rect.anchoredPosition = Vector2.zero;
+                rect.sizeDelta = new Vector2(0f, rowHeight);
+                rect.offsetMin = new Vector2(0f, rect.offsetMin.y);
+                rect.offsetMax = new Vector2(0f, rect.offsetMax.y);
+            }
         }
 
         var image = rowObject.GetComponent<Image>();
@@ -454,12 +503,9 @@ public class PlaneInfoGrid : MonoBehaviour
         layoutElement.preferredHeight = header ? 0f : rowHeight;
 
         var horizontal = rowObject.GetComponent<HorizontalLayoutGroup>();
-        if (preserveExistingHeaderCells)
+        if (preserveExistingHeaderCells || preserveSceneLayout)
         {
-            if (horizontal != null)
-            {
-                horizontal.enabled = false;
-            }
+            PanelSceneLayout.FreezeRowLayout(rect);
         }
         else
         {

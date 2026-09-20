@@ -61,7 +61,6 @@ public class PlaneDisplayController : MonoBehaviour
     [SerializeField] private bool showReceivedTrackLines = true;
     [SerializeField] private LineRenderer trackLineTemplate;
     [SerializeField] private float trackLineWidth = 3.5f;
-    [SerializeField] private int trackLineSortingOrder = 8;
     [SerializeField]
     private Color[] trackLinePalette = new Color[]
     {
@@ -81,6 +80,8 @@ public class PlaneDisplayController : MonoBehaviour
     private readonly Dictionary<string, PlaneView> planes = new Dictionary<string, PlaneView>();
     private readonly Dictionary<string, TrackLineView> trackLines = new Dictionary<string, TrackLineView>();
     private readonly Dictionary<string, int> trackColorIndices = new Dictionary<string, int>();
+    private readonly Dictionary<string, Color> trailColorOverride = new Dictionary<string, Color>();
+    private readonly Dictionary<string, bool> trailHiddenByTrack = new Dictionary<string, bool>();
     private bool isTrailVisible = true;
     private int nextTrackColorIndex;
     private RectTransform mapOverlayRoot;
@@ -107,6 +108,62 @@ public class PlaneDisplayController : MonoBehaviour
         // Create the overlay before data-driven objects so it always remains the top map layer.
         GetPlaneLayerRoot();
         GetMapOverlayRoot();
+        ApplyMemory(PanelMemory.Load());
+    }
+
+    private void OnDisable()
+    {
+        if (!Application.isPlaying)
+            return;
+        var store = PanelMemory.Load();
+        CaptureMemory(store);
+        PanelMemory.Save(store);
+    }
+
+    public void ApplyMemory(PanelMemory.Store store)
+    {
+        if (store?.trails == null)
+            return;
+        foreach (var item in store.trails)
+        {
+            if (item == null || string.IsNullOrWhiteSpace(item.trackId))
+                continue;
+            if (item.hasColor && item.color != null)
+                trailColorOverride[item.trackId] = item.color.ToColor();
+            trailHiddenByTrack[item.trackId] = !item.visible;
+            ApplyTrailVisuals(item.trackId);
+        }
+    }
+
+    public void CaptureMemory(PanelMemory.Store store)
+    {
+        if (store == null)
+            return;
+        var map = new Dictionary<string, PanelMemory.TrailItem>(StringComparer.OrdinalIgnoreCase);
+        if (store.trails != null)
+        {
+            foreach (var old in store.trails)
+            {
+                if (old != null && !string.IsNullOrWhiteSpace(old.trackId))
+                    map[old.trackId] = old;
+            }
+        }
+        foreach (var kv in trailColorOverride)
+        {
+            if (!map.TryGetValue(kv.Key, out var item) || item == null)
+                item = new PanelMemory.TrailItem { trackId = kv.Key, visible = true };
+            item.hasColor = true;
+            item.color = PanelMemory.Color4.From(kv.Value);
+            map[kv.Key] = item;
+        }
+        foreach (var kv in trailHiddenByTrack)
+        {
+            if (!map.TryGetValue(kv.Key, out var item) || item == null)
+                item = new PanelMemory.TrailItem { trackId = kv.Key };
+            item.visible = !kv.Value;
+            map[kv.Key] = item;
+        }
+        store.trails = new List<PanelMemory.TrailItem>(map.Values);
     }
 
     private void LateUpdate()
@@ -134,7 +191,7 @@ public class PlaneDisplayController : MonoBehaviour
                     continue;
                 UpdatePlanePosition(
                     position.trackId ?? "primary",
-                    position.lng, position.lat, position.alt,
+                    (float)position.lng, (float)position.lat, position.alt,
                     position.heading, position.pitch, position.roll);
             }
         }
@@ -157,13 +214,7 @@ public class PlaneDisplayController : MonoBehaviour
     {
         isTrailVisible = !isTrailVisible;
         foreach (var kv in planes)
-        {
-            if (kv.Value.trail != null)
-                kv.Value.trail.gameObject.SetActive(isTrailVisible);
-            foreach (var segment in kv.Value.completedTrails)
-                if (segment != null)
-                    segment.gameObject.SetActive(isTrailVisible);
-        }
+            ApplyTrailVisuals(kv.Key);
         foreach (var kv in trackLines)
             if (kv.Value.line != null)
                 kv.Value.line.gameObject.SetActive(isTrailVisible && showReceivedTrackLines);
@@ -228,7 +279,7 @@ public class PlaneDisplayController : MonoBehaviour
             if (view.trailPoints.Count >= 2)
             {
                 view.completedTrails.Add(view.trail);
-                view.trail = CreateTrailRenderer($"{view.trackId}_{view.completedTrails.Count + 1}");
+                view.trail = CreateTrailRenderer($"{view.trackId}_{view.completedTrails.Count + 1}", view.trackId);
             }
             view.trailPoints.Clear();
             view.trail.positionCount = 0;
@@ -281,7 +332,7 @@ public class PlaneDisplayController : MonoBehaviour
             view.icon = icon;
         }
         view.label = CreatePlaneLabel(trackId, planeName);
-        view.trail = CreateTrailRenderer(trackId);
+        view.trail = CreateTrailRenderer(trackId, trackId);
         GetMapOverlayRoot();
         planes[trackId] = view;
         return view;
@@ -319,19 +370,87 @@ public class PlaneDisplayController : MonoBehaviour
         return text;
     }
 
-    private RadarPolylineGraphic CreateTrailRenderer(string trackId)
+    private RadarPolylineGraphic CreateTrailRenderer(string name, string trackId)
     {
-        var trailObject = new GameObject($"Trail_{trackId}", typeof(RectTransform), typeof(CanvasRenderer), typeof(RadarPolylineGraphic));
+        var trailObject = new GameObject($"Trail_{name}", typeof(RectTransform), typeof(CanvasRenderer), typeof(RadarPolylineGraphic));
         trailObject.transform.SetParent(GetMapOverlayRoot(), false);
         trailObject.layer = mapRoot != null ? mapRoot.gameObject.layer : 0;
 
         var graphic = trailObject.GetComponent<RadarPolylineGraphic>();
         graphic.startWidth = trailTemplate != null ? trailTemplate.startWidth : 3f;
         graphic.endWidth = graphic.startWidth;
-        graphic.color = trailTemplate != null ? trailTemplate.startColor : new Color(0.1f, 0.65f, 1f, 1f);
+        graphic.color = GetTrailColor(trackId);
         graphic.raycastTarget = false;
-        graphic.gameObject.SetActive(isTrailVisible);
+        graphic.gameObject.SetActive(IsPlaneTrailVisible(trackId));
         return graphic;
+    }
+
+    public IReadOnlyList<Color> TrailPalette => trackLinePalette;
+
+    public Color GetTrailColor(string trackId)
+    {
+        if (!string.IsNullOrEmpty(trackId) && trailColorOverride.TryGetValue(trackId, out var color) && color.a > 0.01f)
+            return color;
+        return GetTrackLineColor(trackId);
+    }
+
+    public void SetTrailColor(string trackId, Color color)
+    {
+        if (string.IsNullOrWhiteSpace(trackId))
+            return;
+        trailColorOverride[trackId] = color;
+        ApplyTrailVisuals(trackId);
+    }
+
+    public bool IsPlaneTrailVisible(string trackId)
+    {
+        if (!isTrailVisible)
+            return false;
+        return !trailHiddenByTrack.TryGetValue(trackId, out bool hidden) || !hidden;
+    }
+
+    public void SetPlaneTrailVisible(string trackId, bool visible)
+    {
+        if (string.IsNullOrWhiteSpace(trackId))
+            return;
+        trailHiddenByTrack[trackId] = !visible;
+        ApplyTrailVisuals(trackId);
+    }
+
+    public void ClearTrail(string trackId)
+    {
+        if (string.IsNullOrWhiteSpace(trackId) || !planes.TryGetValue(trackId, out var view) || view == null)
+            return;
+        view.trailPoints.Clear();
+        if (view.trail != null)
+            view.trail.positionCount = 0;
+        for (int i = 0; i < view.completedTrails.Count; i++)
+        {
+            if (view.completedTrails[i] != null)
+                Destroy(view.completedTrails[i].gameObject);
+        }
+        view.completedTrails.Clear();
+    }
+
+    private void ApplyTrailVisuals(string trackId)
+    {
+        if (!planes.TryGetValue(trackId, out var view) || view == null)
+            return;
+        Color color = GetTrailColor(trackId);
+        bool visible = IsPlaneTrailVisible(trackId);
+        if (view.trail != null)
+        {
+            view.trail.color = color;
+            view.trail.gameObject.SetActive(visible);
+        }
+        for (int i = 0; i < view.completedTrails.Count; i++)
+        {
+            var segment = view.completedTrails[i];
+            if (segment == null)
+                continue;
+            segment.color = color;
+            segment.gameObject.SetActive(visible);
+        }
     }
 
     private void StartNewRealtimeTrailSegment(PlaneView view, Vector3 newPosition)
@@ -341,7 +460,7 @@ public class PlaneDisplayController : MonoBehaviour
         else if (view.trail != null)
             Destroy(view.trail.gameObject);
 
-        view.trail = CreateTrailRenderer($"{view.trackId}_{view.completedTrails.Count + 1}");
+        view.trail = CreateTrailRenderer($"{view.trackId}_{view.completedTrails.Count + 1}", view.trackId);
         view.trailPoints.Clear();
         view.trailPoints.Add(newPosition);
         view.trail.positionCount = 1;
@@ -385,7 +504,8 @@ public class PlaneDisplayController : MonoBehaviour
         while (view.trailPoints.Count > Mathf.Max(16, (int)trailMaxPoints))
             view.trailPoints.RemoveAt(0);
 
-        view.trail.gameObject.SetActive(isTrailVisible);
+        view.trail.color = GetTrailColor(view.trackId);
+        view.trail.gameObject.SetActive(IsPlaneTrailVisible(view.trackId));
         view.trail.positionCount = view.trailPoints.Count;
         view.trail.SetPositions(view.trailPoints.ToArray());
     }
@@ -457,7 +577,7 @@ public class PlaneDisplayController : MonoBehaviour
             var pos = positions[i];
             if (pos == null)
                 continue;
-            Vector2 anchored = ConvertToAnchoredPosition(pos.lng, pos.lat);
+            Vector2 anchored = ConvertToAnchoredPosition((float)pos.lng, (float)pos.lat);
             Vector2 clamped = ClampToMap(anchored);
             points[validCount++] = new Vector3(clamped.x, clamped.y, 0f);
         }

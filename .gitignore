@@ -53,6 +53,14 @@ Assets/hk132export.unitypackage
 
 # Data-end app runtime (PyInstaller redistributable DLLs, 700MB+)
 FlyParamData/_internal/
+FlyParamData/*.pyd
+FlyParamData/*.dll
+FlyParamData/base_library.zip
+FlyParamData.zip
+FlyParamData/certifi/
+.pyi_extract2/
+0918flydata/
+screenshots/
 
 # OS
 .DS_Store

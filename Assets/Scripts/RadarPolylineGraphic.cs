@@ -66,7 +66,7 @@ public sealed class RadarPolylineGraphic : MaskableGraphic
         SetVerticesDirty();
     }
 
-    private static Material GetOverlayMaterial()
+    public static Material GetOverlayMaterial()
     {
         if (overlayMaterial != null)
             return overlayMaterial;

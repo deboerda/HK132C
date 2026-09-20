@@ -11,36 +11,60 @@ public class DataRuleConfigPanel : MonoBehaviour
 {
     private enum FieldType { Numeric, String }
 
-    private struct FieldDef
+    private class FieldDef
     {
-        public string displayName;
-        public string key;
+        public string key;        // 协议 JSON key（唯一合法变量名）
+        public string displayName; // 展示名（DATA_FIELDS 别名里的中文，兜底用 key）
         public FieldType type;
+        public bool common;       // 常用变量，排前面
+        public int order;         // 原始顺序（稳定排序用）
     }
 
-    private static readonly FieldDef[] AllFields =
+    // 收到 DATA_FIELDS 之前使用的内置兜底变量表（与协议 JSON key 一致）。
+    // 收到 DATA_FIELDS 后以数据端发来的 JSON key 为准（别名仅用于展示/搜索）。
+    private static readonly FieldDef[] DefaultFields =
     {
-        new FieldDef { displayName = "经度",       key = "lng",          type = FieldType.Numeric },
-        new FieldDef { displayName = "纬度",       key = "lat",          type = FieldType.Numeric },
-        new FieldDef { displayName = "高度",       key = "alt",          type = FieldType.Numeric },
-        new FieldDef { displayName = "航向",       key = "heading",      type = FieldType.Numeric },
-        new FieldDef { displayName = "俯仰",       key = "pitch",        type = FieldType.Numeric },
-        new FieldDef { displayName = "横滚",       key = "roll",         type = FieldType.Numeric },
-        new FieldDef { displayName = "速度",       key = "speed",        type = FieldType.Numeric },
-        new FieldDef { displayName = "电量",       key = "battery",      type = FieldType.Numeric },
-        new FieldDef { displayName = "探测范围",    key = "detectRange",  type = FieldType.Numeric },
-        new FieldDef { displayName = "左右偏转角",  key = "yawAngle",     type = FieldType.Numeric },
-        new FieldDef { displayName = "上下偏转角",  key = "pitchAngle",   type = FieldType.Numeric },
-        new FieldDef { displayName = "周期号",     key = "cycleId",      type = FieldType.Numeric },
-        new FieldDef { displayName = "状态",       key = "state",        type = FieldType.String },
-        new FieldDef { displayName = "告警",       key = "alarm",        type = FieldType.String },
-        new FieldDef { displayName = "探测器类型",  key = "detectorType", type = FieldType.String },
-        new FieldDef { displayName = "范围类型",    key = "rangeType",    type = FieldType.String },
-        new FieldDef { displayName = "中心点",     key = "centerPoint",  type = FieldType.String },
-        new FieldDef { displayName = "雷达状态",    key = "radarStatus",  type = FieldType.String },
-        new FieldDef { displayName = "飞行时间",    key = "flightTime",   type = FieldType.String },
-        new FieldDef { displayName = "计划号",     key = "planId",       type = FieldType.String },
+        new FieldDef { key = "trackId",        displayName = "飞机编号",    type = FieldType.String  },
+        new FieldDef { key = "planId",         displayName = "计划号",      type = FieldType.String  },
+        new FieldDef { key = "flightTime",     displayName = "飞行时间",    type = FieldType.String  },
+        new FieldDef { key = "lng",            displayName = "经度",        type = FieldType.Numeric },
+        new FieldDef { key = "lat",            displayName = "纬度",        type = FieldType.Numeric },
+        new FieldDef { key = "alt",            displayName = "高度",        type = FieldType.Numeric, common = true },
+        new FieldDef { key = "heading",        displayName = "航向角(度)",  type = FieldType.Numeric, common = true },
+        new FieldDef { key = "pitch",          displayName = "俯仰角(度)",  type = FieldType.Numeric, common = true },
+        new FieldDef { key = "roll",           displayName = "横滚角(度)",  type = FieldType.Numeric, common = true },
+        new FieldDef { key = "speed",          displayName = "速度(米/秒)", type = FieldType.Numeric, common = true },
+        new FieldDef { key = "battery",        displayName = "电量(%)",     type = FieldType.Numeric, common = true },
+        new FieldDef { key = "state",          displayName = "飞行状态",    type = FieldType.String,  common = true },
+        new FieldDef { key = "alarm",          displayName = "告警信息",    type = FieldType.String,  common = true },
+        new FieldDef { key = "detector_type",  displayName = "探测器类型",  type = FieldType.String  },
+        new FieldDef { key = "range_type",     displayName = "范围类型",    type = FieldType.String  },
+        new FieldDef { key = "detect_range",   displayName = "探测范围",    type = FieldType.Numeric },
+        new FieldDef { key = "yaw_angle",      displayName = "扫描中心(度)", type = FieldType.Numeric },
+        new FieldDef { key = "pitch_angle",    displayName = "俯仰中心(度)", type = FieldType.Numeric },
+        new FieldDef { key = "yaw_scan_angle", displayName = "扫描方位(度)", type = FieldType.Numeric },
+        new FieldDef { key = "pitch_scan_angle", displayName = "俯仰方位(度)", type = FieldType.Numeric },
+        new FieldDef { key = "center_point",   displayName = "中心点",      type = FieldType.String  },
+        new FieldDef { key = "center_point1",  displayName = "传感器位置",  type = FieldType.String  },
+        new FieldDef { key = "radar_status",   displayName = "探测器状态",  type = FieldType.String  },
+        new FieldDef { key = "cycleId",        displayName = "周期号",      type = FieldType.Numeric },
     };
+
+    // 旧内部字段名 → 协议 JSON key（迁移历史配置用）
+    private static readonly Dictionary<string, string> LegacyKeyMap = new Dictionary<string, string>
+    {
+        { "detectRange",  "detect_range"  },
+        { "yawAngle",     "yaw_angle"     },
+        { "pitchAngle",   "pitch_angle"   },
+        { "detectorType", "detector_type" },
+        { "rangeType",    "range_type"    },
+        { "centerPoint",  "center_point"  },
+        { "radarStatus",  "radar_status"  },
+    };
+
+    // 动态变量字典：来自 DATA_FIELDS 的 JSON key（未收到时用 DefaultFields 兜底）
+    private readonly List<FieldDef> fieldDict = new List<FieldDef>();
+    private int fieldDictSourceVersion = -1;
 
     private static readonly Color[] MarkerPalette =
     {
@@ -97,6 +121,8 @@ public class DataRuleConfigPanel : MonoBehaviour
         public Button colorButton;
         public Button showButton;
         public Text showButtonLabel;
+        public Button deleteButton;
+        public Text deleteButtonLabel;
         public string boundTrackId;
         public string boundFieldKey;
     }
@@ -123,6 +149,9 @@ public class DataRuleConfigPanel : MonoBehaviour
     [SerializeField] private RectTransform selectorRoot;
     [SerializeField] private RectTransform headerRoot;
     [SerializeField] private RectTransform contentRoot;
+    [SerializeField] private RectTransform rowTemplate;
+    [Tooltip("标题和数据列使用 Scene 里拖好的坐标；运行时只改文字。")]
+    [SerializeField] private bool preserveSceneLayout = true;
     [SerializeField] private RectTransform addButtonRoot;
     [SerializeField] private RectTransform inputBarRoot;
     [SerializeField] private bool autoCreateLayout = true;
@@ -162,6 +191,9 @@ public class DataRuleConfigPanel : MonoBehaviour
     private RowView headerRow;
     private float nextRefreshTime;
     private string selectedTrackId = AllPlanesOption;
+    private string addTargetTrackId;
+    private string selectedRowTrackId;
+    private string selectedRowFieldKey;
     private InputField addVarInput; // kept for compatibility but unused in new flow
     private Text addVarHint;
     private float hintClearTime;
@@ -188,6 +220,7 @@ public class DataRuleConfigPanel : MonoBehaviour
             if (!string.IsNullOrEmpty(ste.trackId) && ste.entries != null && !trackEntries.ContainsKey(ste.trackId))
                 trackEntries[ste.trackId] = new List<TrackRuleEntry>(ste.entries);
         }
+        LoadPersistentRules();
     }
 
     private void SyncDictToSerialized()
@@ -201,6 +234,67 @@ public class DataRuleConfigPanel : MonoBehaviour
                 entries = new List<TrackRuleEntry>(kv.Value)
             });
         }
+        SavePersistentRules();
+    }
+
+    private bool persistentRulesLoaded;
+
+    private void LoadPersistentRules()
+    {
+        if (persistentRulesLoaded)
+            return;
+        persistentRulesLoaded = true;
+        var store = PanelMemory.Load();
+        if (store?.tracks == null)
+            return;
+        foreach (var track in store.tracks)
+        {
+            if (track == null || string.IsNullOrWhiteSpace(track.trackId) || track.entries == null || track.entries.Count == 0)
+                continue;
+            var list = new List<TrackRuleEntry>();
+            foreach (var item in track.entries)
+            {
+                if (item == null || string.IsNullOrWhiteSpace(item.fieldKey))
+                    continue;
+                list.Add(new TrackRuleEntry
+                {
+                    fieldKey = item.fieldKey,
+                    rule = item.rule ?? "",
+                    hideMarker = item.hideMarker,
+                    markerColor = item.color != null ? item.color.ToColor() : MarkerColorFor(item.fieldKey),
+                });
+            }
+            if (list.Count > 0)
+                trackEntries[track.trackId] = list;
+        }
+    }
+
+    private void SavePersistentRules()
+    {
+        var store = PanelMemory.Load();
+        store.tracks = new List<PanelMemory.TrackRules>();
+        foreach (var kv in trackEntries)
+        {
+            var track = new PanelMemory.TrackRules { trackId = kv.Key };
+            if (kv.Value != null)
+            {
+                foreach (var e in kv.Value)
+                {
+                    if (e == null || string.IsNullOrWhiteSpace(e.fieldKey))
+                        continue;
+                    Color c = EnsureMarkerColor(e.markerColor, e.fieldKey);
+                    track.entries.Add(new PanelMemory.RuleItem
+                    {
+                        fieldKey = e.fieldKey,
+                        rule = e.rule ?? "",
+                        hideMarker = e.hideMarker,
+                        color = PanelMemory.Color4.From(c),
+                    });
+                }
+            }
+            store.tracks.Add(track);
+        }
+        PanelMemory.Save(store);
     }
 
     private List<TrackRuleEntry> GetDefaultEntries()
@@ -228,7 +322,90 @@ public class DataRuleConfigPanel : MonoBehaviour
 
     private bool IsAllPlanesMode => selectedTrackId == AllPlanesOption;
 
+    // ── Variable dictionary (driven by DATA_FIELDS json keys) ──
+
+    private void EnsureFieldDict()
+    {
+        int version = receiver != null ? receiver.DataFieldsVersion : -1;
+        if (fieldDict.Count > 0 && version == fieldDictSourceVersion)
+            return;
+
+        fieldDictSourceVersion = version;
+        fieldDict.Clear();
+
+        int order = 0;
+        var remote = receiver != null ? receiver.DataFields : null;
+        if (remote != null && remote.Count > 0)
+        {
+            foreach (var kv in remote)
+            {
+                string key = kv.Key;
+                if (string.IsNullOrWhiteSpace(key))
+                    continue;
+                string display = key;
+                foreach (var alias in kv.Value)
+                {
+                    if (!string.IsNullOrWhiteSpace(alias) && !alias.Equals(key, StringComparison.Ordinal))
+                    {
+                        display = alias;
+                        break;
+                    }
+                }
+                fieldDict.Add(new FieldDef
+                {
+                    key = key,
+                    displayName = display,
+                    type = IsNumericJsonKey(key) ? FieldType.Numeric : FieldType.String,
+                    common = CommonVariableKeys.Contains(key),
+                    order = order++,
+                });
+            }
+        }
+        else
+        {
+            foreach (var d in DefaultFields)
+                fieldDict.Add(new FieldDef { key = d.key, displayName = d.displayName, type = d.type, common = d.common, order = order++ });
+        }
+
+        // 常用变量排前面，组内保持收到顺序（稳定）
+        fieldDict.Sort((a, b) =>
+        {
+            int c = b.common.CompareTo(a.common);
+            return c != 0 ? c : a.order.CompareTo(b.order);
+        });
+    }
+
+    private static readonly HashSet<string> CommonVariableKeys = new HashSet<string>
+    {
+        "alt", "hight", "heading", "pitch", "roll", "speed", "battery", "state", "alarm", "lng", "lat", "flightTime",
+    };
+
+    private static bool IsNumericJsonKey(string key)
+    {
+        switch (key)
+        {
+            case "lng": case "lat": case "alt": case "hight": case "height":
+            case "heading": case "pitch":
+            case "roll": case "speed": case "battery": case "detect_range":
+            case "yaw_angle": case "pitch_angle": case "yaw_scan_angle":
+            case "pitch_scan_angle": case "cycleId":
+                return true;
+            default: return false;
+        }
+    }
+
+    private List<string> GetFieldAliases(string key)
+    {
+        var remote = receiver != null ? receiver.DataFields : null;
+        if (remote != null && remote.TryGetValue(key, out var aliases))
+            return aliases;
+        return null;
+    }
+
     // ── Value extraction ───────────────────────────────────────
+
+    private List<FlightDataStreamReceiver.CycleTableRecord> currentCycleRecords;
+    private string currentCycleTrackId;
 
     private string GetStringValue(FlightDataStreamReceiver.TrackPosition pos,
         FlightDataStreamReceiver.TrackTimetableState state,
@@ -236,28 +413,68 @@ public class DataRuleConfigPanel : MonoBehaviour
     {
         switch (key)
         {
-            case "lng":          return pos?.lng.ToString("F5") ?? "-";
-            case "lat":          return pos?.lat.ToString("F5") ?? "-";
-            case "alt":          return pos?.alt.ToString("F1") ?? "-";
-            case "heading":      return pos?.heading.ToString("F1") ?? "-";
-            case "pitch":        return pos?.pitch.ToString("F1") ?? "-";
-            case "roll":         return pos?.roll.ToString("F1") ?? "-";
-            case "speed":        return state?.speed.ToString("F1") ?? "-";
-            case "battery":      return state?.battery.ToString("F0") ?? "-";
-            case "detectRange":  return state?.detectRange.ToString("F0") ?? "-";
-            case "yawAngle":     return state?.yawAngle.ToString("F1") ?? "-";
-            case "pitchAngle":   return state?.pitchAngle.ToString("F1") ?? "-";
-            case "cycleId":      return "-";
-            case "state":        return state?.state ?? "-";
-            case "alarm":        return state?.alarm ?? "-";
-            case "detectorType": return state?.detectorType ?? "-";
-            case "rangeType":    return state?.rangeType ?? "-";
-            case "centerPoint":  return state?.centerPoint ?? "-";
-            case "radarStatus":  return state?.radarStatus ?? "-";
-            case "flightTime":   return pos?.flightTime ?? "-";
-            case "planId":       return pos?.planId ?? "-";
-            default:             return "-";
+            case "lng":              return LiveText(key) ?? pos?.lng.ToString("F6") ?? "-";
+            case "lat":              return LiveText(key) ?? pos?.lat.ToString("F6") ?? "-";
+            case "alt":
+            case "hight":
+            case "height":
+            {
+                if (receiver != null && !string.IsNullOrWhiteSpace(currentCycleTrackId) &&
+                    receiver.TryGetFieldValue(currentCycleTrackId, key, out string hightText) &&
+                    !string.IsNullOrWhiteSpace(hightText))
+                    return hightText;
+                return pos?.alt.ToString("F1") ?? "-";
+            }
+            case "heading":          return LiveText(key) ?? pos?.heading.ToString("F1") ?? "-";
+            case "pitch":            return LiveText(key) ?? pos?.pitch.ToString("F1") ?? "-";
+            case "roll":             return LiveText(key) ?? pos?.roll.ToString("F1") ?? "-";
+            case "speed":            return LiveText(key) ?? state?.speed.ToString("F1") ?? "-";
+            case "battery":          return LiveText(key) ?? state?.battery.ToString("F0") ?? "-";
+            case "detect_range":     return state?.detectRange.ToString("F0") ?? "-";
+            case "yaw_angle":        return state?.yawAngle.ToString("F1") ?? "-";
+            case "pitch_angle":      return state?.pitchAngle.ToString("F1") ?? "-";
+            case "yaw_scan_angle":   return state?.yawScanAngle.ToString("F1") ?? "-";
+            case "pitch_scan_angle": return state?.pitchScanAngle.ToString("F1") ?? "-";
+            case "cycleId":          return GetCycleIdText();
+            case "state":            return state?.state ?? "-";
+            case "alarm":            return state?.alarm ?? "-";
+            case "detector_type":    return state?.detectorType ?? "-";
+            case "range_type":       return state?.rangeType ?? "-";
+            case "center_point":     return state?.centerPoint ?? "-";
+            case "center_point1":    return state?.centerPoint1 ?? "-";
+            case "radar_status":     return state?.radarStatus ?? "-";
+            case "flightTime":       return pos?.flightTime ?? "-";
+            case "planId":           return pos?.planId ?? "-";
+            case "trackId":          return pos?.trackId ?? state?.trackId ?? "-";
+            default:
+                if (receiver != null && !string.IsNullOrWhiteSpace(currentCycleTrackId) &&
+                    receiver.TryGetFieldValue(currentCycleTrackId, key, out string live) &&
+                    !string.IsNullOrWhiteSpace(live))
+                    return live;
+                return "-";
         }
+    }
+
+    private string GetCycleIdText()
+    {
+        var rec = currentCycleRecords?.Find(r => r != null && r.trackId == currentCycleTrackId);
+        return rec != null ? rec.cycleId.ToString() : "-";
+    }
+
+    private string LiveText(string key)
+    {
+        if (receiver == null || string.IsNullOrWhiteSpace(currentCycleTrackId) || string.IsNullOrWhiteSpace(key))
+            return null;
+        return receiver.TryGetFieldValue(currentCycleTrackId, key, out string value) && !string.IsNullOrWhiteSpace(value)
+            ? value
+            : null;
+    }
+
+    private float? LiveFloat(string key)
+    {
+        if (receiver == null || string.IsNullOrWhiteSpace(currentCycleTrackId) || string.IsNullOrWhiteSpace(key))
+            return null;
+        return receiver.TryGetFieldFloat(currentCycleTrackId, key);
     }
 
     private float? GetNumericValue(FlightDataStreamReceiver.TrackPosition pos,
@@ -265,48 +482,65 @@ public class DataRuleConfigPanel : MonoBehaviour
     {
         switch (key)
         {
-            case "lng":         return pos?.lng;
-            case "lat":         return pos?.lat;
-            case "alt":         return pos?.alt;
-            case "heading":     return pos?.heading;
-            case "pitch":       return pos?.pitch;
-            case "roll":        return pos?.roll;
-            case "speed":       return state?.speed;
-            case "battery":     return state?.battery;
-            case "detectRange": return state?.detectRange;
-            case "yawAngle":    return state?.yawAngle;
-            case "pitchAngle":  return state?.pitchAngle;
-            default:            return null;
+            case "lng":              return LiveFloat(key) ?? (pos != null ? (float)pos.lng : (float?)null);
+            case "lat":              return LiveFloat(key) ?? (pos != null ? (float)pos.lat : (float?)null);
+            case "alt":              return LiveFloat("hight") ?? LiveFloat("alt") ?? pos?.alt;
+            case "heading":          return LiveFloat(key) ?? pos?.heading;
+            case "pitch":            return LiveFloat(key) ?? pos?.pitch;
+            case "roll":             return LiveFloat(key) ?? pos?.roll;
+            case "speed":            return LiveFloat(key) ?? state?.speed;
+            case "battery":          return LiveFloat(key) ?? state?.battery;
+            case "detect_range":     return state?.detectRange;
+            case "yaw_angle":        return state?.yawAngle;
+            case "pitch_angle":      return state?.pitchAngle;
+            case "yaw_scan_angle":   return state?.yawScanAngle;
+            case "pitch_scan_angle": return state?.pitchScanAngle;
+            case "hight":
+            case "height":
+                return receiver != null && !string.IsNullOrWhiteSpace(currentCycleTrackId)
+                    ? receiver.TryGetFieldFloat(currentCycleTrackId, key) ?? pos?.alt
+                    : pos?.alt;
+            default:
+                return receiver != null && !string.IsNullOrWhiteSpace(currentCycleTrackId)
+                    ? receiver.TryGetFieldFloat(currentCycleTrackId, key)
+                    : null;
         }
     }
 
     private static bool IsNumericField(string key)
     {
-        switch (key)
-        {
-            case "lng": case "lat": case "alt": case "heading": case "pitch":
-            case "roll": case "speed": case "battery": case "detectRange":
-            case "yawAngle": case "pitchAngle":
-                return true;
-            default: return false;
-        }
+        return IsNumericJsonKey(key) && key != "cycleId";
     }
 
-    private static string GetFieldDisplayName(string key)
+    private string GetFieldDisplayName(string key)
     {
-        foreach (var f in AllFields) if (f.key == key) return f.displayName;
+        EnsureFieldDict();
+        foreach (var f in fieldDict)
+            if (f.key == key) return f.displayName;
         return key;
     }
 
-    private static string FindFieldKey(string input)
+    /// <summary>把用户输入解析成合法 JSON key；匹配 key/展示名/别名（不区分大小写），旧内部名自动迁移。</summary>
+    private string FindFieldKey(string input)
     {
         if (string.IsNullOrWhiteSpace(input)) return null;
         input = input.Trim();
-        foreach (var f in AllFields)
-        {
-            if (f.key == input || f.displayName == input) return f.key;
+
+        if (LegacyKeyMap.TryGetValue(input, out var migrated))
+            input = migrated;
+
+        EnsureFieldDict();
+        foreach (var f in fieldDict)
             if (f.key.Equals(input, StringComparison.OrdinalIgnoreCase)) return f.key;
+        foreach (var f in fieldDict)
             if (f.displayName.Equals(input, StringComparison.OrdinalIgnoreCase)) return f.key;
+        foreach (var f in fieldDict)
+        {
+            var aliases = GetFieldAliases(f.key);
+            if (aliases == null) continue;
+            foreach (var alias in aliases)
+                if (!string.IsNullOrWhiteSpace(alias) && alias.Equals(input, StringComparison.OrdinalIgnoreCase))
+                    return f.key;
         }
         return null;
     }
@@ -330,7 +564,8 @@ public class DataRuleConfigPanel : MonoBehaviour
         rule = rule.Replace("＝", "=").Replace("～", "~").Replace("＞", ">").Replace("＜", "<");
         rule = rule.Replace("==", "=");
         // Allow "高度=0" / "alt=0" in the rule cell by stripping a leading field name.
-        foreach (var field in AllFields)
+        EnsureFieldDict();
+        foreach (var field in fieldDict)
         {
             if (rule.StartsWith(field.displayName, StringComparison.OrdinalIgnoreCase))
             {
@@ -383,38 +618,64 @@ public class DataRuleConfigPanel : MonoBehaviour
     {
         if (font == null) font = Resources.GetBuiltinResource<Font>("Arial.ttf");
         SyncSerializedToDict(); // Restore user-added entries from serialized storage
-        if (autoCreateLayout) EnsureLayoutObjects();
+        if (autoCreateLayout && !preserveSceneLayout) EnsureLayoutObjects();
         if (planeDropdown != null)
         {
             planeDropdown.onValueChanged.RemoveListener(OnPlaneDropdownChanged);
             planeDropdown.onValueChanged.AddListener(OnPlaneDropdownChanged);
         }
-        EnsureVerticalLayout(headerRoot, false);
-        EnsureVerticalLayout(contentRoot, true);
+        if (!preserveSceneLayout)
+        {
+            EnsureVerticalLayout(headerRoot, false);
+            EnsureVerticalLayout(contentRoot, true);
+        }
         if (headerRoot != null)
         {
             headerRow = FindOrCreateHeaderRow();
             SetHeaderTexts(headerRow);
         }
+        CollectSceneDataRows();
+        BindAddButton();
+    }
+
+    private void OnDisable()
+    {
+        if (Application.isPlaying)
+            SavePersistentRules();
+    }
+
+    private void OnApplicationQuit()
+    {
+        SavePersistentRules();
+    }
+
+    private void CollectSceneDataRows()
+    {
+        if (rowTemplate == null)
+            rowTemplate = PanelSceneLayout.FindRowTemplate(contentRoot, rowTemplate);
     }
 
     private void OnEnable()
     {
         if (font == null) font = Resources.GetBuiltinResource<Font>("Arial.ttf");
         SyncSerializedToDict(); // Restore entries on every enable (panel switch)
-        if (autoCreateLayout) EnsureLayoutObjects();
+        if (autoCreateLayout && !preserveSceneLayout) EnsureLayoutObjects();
         if (planeDropdown != null)
         {
             planeDropdown.onValueChanged.RemoveListener(OnPlaneDropdownChanged);
             planeDropdown.onValueChanged.AddListener(OnPlaneDropdownChanged);
         }
-        EnsureVerticalLayout(headerRoot, false);
-        EnsureVerticalLayout(contentRoot, true);
+        if (!preserveSceneLayout)
+        {
+            EnsureVerticalLayout(headerRoot, false);
+            EnsureVerticalLayout(contentRoot, true);
+        }
         if (headerRoot != null)
         {
             headerRow = FindOrCreateHeaderRow();
             SetHeaderTexts(headerRow);
         }
+        BindAddButton();
         nextRefreshTime = 0f;
         Refresh(); // Force immediate refresh so data shows right away
     }
@@ -454,6 +715,8 @@ public class DataRuleConfigPanel : MonoBehaviour
 
         var positions = receiver?.SnapshotPositions;
         var states = receiver?.SnapshotStates;
+        currentCycleRecords = receiver?.SnapshotCycleRecords;
+        EnsureFieldDict();
         if (positions != null || states != null)
             UpdatePlaneDropdown(positions, states);
 
@@ -532,6 +795,7 @@ public class DataRuleConfigPanel : MonoBehaviour
             var state = states?.Find(s => s != null && s.trackId == trackId);
             bool hasLiveData = pos != null || state != null;
             var entries = GetEntries(trackId);
+            currentCycleTrackId = trackId;
 
             for (int i = 0; i < entries.Count; i++)
             {
@@ -542,6 +806,8 @@ public class DataRuleConfigPanel : MonoBehaviour
 
             for (int i = 0; i < entries.Count; i++)
             {
+                bool known = !string.IsNullOrWhiteSpace(entries[i].fieldKey)
+                             && FindFieldKey(entries[i].fieldKey) != null;
                 string key = FindFieldKey(entries[i].fieldKey) ?? entries[i].fieldKey;
                 string rule = entries[i].rule;
                 bool isNum = IsNumericField(key);
@@ -555,6 +821,7 @@ public class DataRuleConfigPanel : MonoBehaviour
                     hasLiveData = hasLiveData,
                     hideMarker = entries[i].hideMarker,
                     markerColor = EnsureMarkerColor(entries[i].markerColor, key),
+                    fieldKnown = known,
                 });
             }
         }
@@ -568,7 +835,7 @@ public class DataRuleConfigPanel : MonoBehaviour
             if (item.type == DisplayType.GroupHeader)
                 ConfigureGroupRow(rows[i], item.trackId);
             else
-                ConfigureDataRow(rows[i], item.rank, item.trackId, item.fieldKey, item.displayName, item.strValue, item.numValue, item.isNumeric, item.rule, item.hasLiveData, item.hideMarker, item.markerColor);
+                ConfigureDataRow(rows[i], item.rank, item.trackId, item.fieldKey, item.displayName, item.strValue, item.numValue, item.isNumeric, item.rule, item.hasLiveData, item.hideMarker, item.markerColor, item.fieldKnown);
         }
     }
 
@@ -636,6 +903,7 @@ public class DataRuleConfigPanel : MonoBehaviour
         public bool hasLiveData;
         public bool hideMarker;
         public Color markerColor;
+        public bool fieldKnown;
     }
 
     // ── Row configuration ───────────────────────────────────────
@@ -657,9 +925,15 @@ public class DataRuleConfigPanel : MonoBehaviour
         if (row.statusText != null) row.statusText.text = "";
         if (row.colorButton != null) row.colorButton.gameObject.SetActive(false);
         if (row.showButton != null) row.showButton.gameObject.SetActive(false);
+        if (row.deleteButton != null) row.deleteButton.gameObject.SetActive(false);
+        row.boundTrackId = trackId;
+        BindGroupHeaderClick(row, trackId);
+        bool selected = !string.IsNullOrEmpty(addTargetTrackId) && addTargetTrackId == trackId;
+        if (img != null && selected)
+            img.color = new Color(groupBackground.r + 0.08f, groupBackground.g + 0.12f, groupBackground.b + 0.16f, groupBackground.a);
     }
 
-    private void ConfigureDataRow(RowView row, int rank, string trackId, string fieldKey, string varName, string strValue, float? numValue, bool isNumeric, string rule, bool hasLiveData, bool hideMarker, Color markerColor)
+    private void ConfigureDataRow(RowView row, int rank, string trackId, string fieldKey, string varName, string strValue, float? numValue, bool isNumeric, string rule, bool hasLiveData, bool hideMarker, Color markerColor, bool fieldKnown = true)
     {
         if (row == null) return;
         row.boundTrackId = trackId;
@@ -714,12 +988,24 @@ public class DataRuleConfigPanel : MonoBehaviour
             if (row.showButtonLabel != null)
                 row.showButtonLabel.text = hideMarker ? "隐" : "显";
         }
+        if (row.deleteButton != null)
+            row.deleteButton.gameObject.SetActive(false);
+        BindDataRowClick(row, trackId, fieldKey);
+        bool selected = selectedRowTrackId == trackId && selectedRowFieldKey == fieldKey;
+        if (selected && img != null)
+            img.color = new Color(0.18f, 0.32f, 0.48f, 0.95f);
         var progress = GetProgressController();
         if (progress != null)
             progress.SetMarkerGroupVisible(ViolationKey(trackId, fieldKey), !hideMarker);
         if (row.statusText != null)
         {
-            if (!isNumeric)
+            if (!fieldKnown && !string.IsNullOrWhiteSpace(fieldKey))
+            {
+                // 不在 DATA_FIELDS / 变量字典里的 key：提示无效，不参与规则判定
+                row.statusText.text = "变量无效";
+                row.statusText.color = warningColor;
+            }
+            else if (!isNumeric)
             {
                 row.statusText.text = hasLiveData ? "正常" : "待数据";
                 row.statusText.color = hasLiveData ? normalColor : warningColor;
@@ -759,7 +1045,7 @@ public class DataRuleConfigPanel : MonoBehaviour
         row.root.name = $"Row_{trackId}_{fieldKey}";
     }
 
-    private static string ViolationKey(string trackId, string fieldKey)
+    private string ViolationKey(string trackId, string fieldKey)
     {
         string key = FindFieldKey(fieldKey) ?? (fieldKey ?? string.Empty).Trim();
         return $"{trackId}|{key}";
@@ -791,10 +1077,131 @@ public class DataRuleConfigPanel : MonoBehaviour
 
     // ── Add entry via InputField ────────────────────────────────
 
+    private void BindDataRowClick(RowView row, string trackId, string fieldKey)
+    {
+        if (row == null || row.root == null)
+            return;
+        var img = row.root.GetComponent<Image>();
+        if (img != null)
+            img.raycastTarget = true;
+        var btn = row.root.GetComponent<Button>();
+        if (btn == null)
+            btn = row.root.gameObject.AddComponent<Button>();
+        btn.transition = Selectable.Transition.None;
+        btn.targetGraphic = img;
+        btn.onClick.RemoveAllListeners();
+        string capturedTrack = trackId;
+        string capturedKey = fieldKey;
+        btn.onClick.AddListener(() => SelectDataRow(capturedTrack, capturedKey));
+    }
+
+    private void SelectDataRow(string trackId, string fieldKey)
+    {
+        selectedRowTrackId = trackId;
+        selectedRowFieldKey = fieldKey;
+        ShowHint($"已选中 {trackId} / {fieldKey}，点删除行可移除", accentTextColor);
+        Refresh();
+    }
+
+    private void OnDeleteRowClicked()
+    {
+        if (isReadOnly)
+        {
+            ShowHint("播放中不能删除", warningColor);
+            return;
+        }
+        if (string.IsNullOrEmpty(selectedRowTrackId) || string.IsNullOrEmpty(selectedRowFieldKey))
+        {
+            ShowHint("请先点击要删除的数据行", warningColor);
+            return;
+        }
+        DeleteRow(selectedRowTrackId, selectedRowFieldKey);
+        selectedRowTrackId = null;
+        selectedRowFieldKey = null;
+    }
+
+    private void BindGroupHeaderClick(RowView row, string trackId)
+    {
+        if (row == null || row.root == null || string.IsNullOrEmpty(trackId))
+            return;
+        var img = row.root.GetComponent<Image>();
+        if (img != null)
+            img.raycastTarget = true;
+        var btn = row.root.GetComponent<Button>();
+        if (btn == null)
+            btn = row.root.gameObject.AddComponent<Button>();
+        btn.transition = Selectable.Transition.None;
+        btn.targetGraphic = img;
+        btn.onClick.RemoveAllListeners();
+        string captured = trackId;
+        btn.onClick.AddListener(() => SelectAddTarget(captured));
+    }
+
+    private void SelectAddTarget(string trackId)
+    {
+        addTargetTrackId = trackId;
+        ShowHint($"添加行将加入 {trackId}", accentTextColor);
+        Refresh();
+    }
+
     private void OnAddEntryClicked()
     {
+        // 加号 = 添加变量：弹出变量选择器，只允许 DATA_FIELDS / 内置字典里的合法 JSON key
+        EnsureFieldDict();
+
+        var matches = new List<string>();
+        foreach (var f in fieldDict)
+            if (f.common) matches.Add($"{f.key}（{f.displayName}）");
+        foreach (var f in fieldDict)
+            if (!f.common) matches.Add($"{f.key}（{f.displayName}）");
+
+        if (matches.Count == 0)
+        {
+            ShowHint("变量字典为空，请先让数据端发送 DATA_FIELDS", warningColor);
+            return;
+        }
+
+        bool hasRemote = receiver != null && receiver.DataFields.Count > 0;
+        ShowSuggestionPanel(matches, hasRemote
+            ? "选择要添加的变量（JSON key，常用在前）"
+            : "尚未收到 DATA_FIELDS，先展示内置常用变量（收到后以 JSON key 为准）");
+    }
+
+    private void AddEntryWithFieldKey(string jsonKey)
+    {
+        if (string.IsNullOrWhiteSpace(jsonKey))
+            return;
+
+        var entries = GetEntries(ResolveTargetTrackId());
+        foreach (var e in entries)
+        {
+            if (FindFieldKey(e.fieldKey) == jsonKey)
+            {
+                ShowHint($"变量 {jsonKey} 已存在", warningColor);
+                return;
+            }
+        }
+
+        entries.Add(new TrackRuleEntry
+        {
+            fieldKey = jsonKey,
+            rule = DefaultRuleForKey(jsonKey),
+            markerColor = MarkerColorFor(jsonKey),
+        });
+        ShowHint($"已添加变量 {jsonKey}", normalColor);
+        SyncDictToSerialized();
+        Refresh();
+    }
+
+    private string ResolveTargetTrackId()
+    {
         // Determine target trackId: use selected plane, or first available from receiver, or from trackEntries
-        string trackId = selectedTrackId != AllPlanesOption ? selectedTrackId : "";
+        if (selectedTrackId != AllPlanesOption && !string.IsNullOrWhiteSpace(selectedTrackId))
+            return selectedTrackId;
+        if (!string.IsNullOrWhiteSpace(addTargetTrackId) && addTargetTrackId != AllPlanesOption)
+            return addTargetTrackId;
+
+        string trackId = "";
 
         // Try to get a real trackId from receiver
         if (string.IsNullOrEmpty(trackId))
@@ -838,11 +1245,21 @@ public class DataRuleConfigPanel : MonoBehaviour
                 dropdownTrackIds.Add(trackId);
         }
 
-        var entries = GetEntries(trackId);
-        entries.Add(new TrackRuleEntry { fieldKey = "", rule = "" });
-        ShowHint("已新建行，请在行中输入变量名和规则", normalColor);
-        SyncDictToSerialized();
-        Refresh();
+        return trackId;
+    }
+
+    private static string DefaultRuleForKey(string key)
+    {
+        switch (key)
+        {
+            case "alt":     return ">0";
+            case "heading": return "0~360";
+            case "pitch":   return "-90~90";
+            case "roll":    return "-180~180";
+            case "speed":   return ">=0";
+            case "battery": return "0~100";
+            default:        return "";
+        }
     }
 
     private void ShowHint(string msg, Color color)
@@ -953,7 +1370,7 @@ public class DataRuleConfigPanel : MonoBehaviour
         var bt = bTextRect.GetComponent<Text>();
         if (bt == null) bt = bTextRect.gameObject.AddComponent<Text>();
         bt.font = font; bt.fontSize = rowFontSize; bt.color = Color.white; bt.alignment = TextAnchor.MiddleCenter;
-        bt.text = "+ 添加行";
+        bt.text = "+ 添加变量";
 
         // Hint text (find or create)
         RectTransform hintRect = FindOrCreateRect(root, "Hint");
@@ -1171,7 +1588,24 @@ public class DataRuleConfigPanel : MonoBehaviour
         while (rows.Count < count)
         {
             int i = rows.Count;
-            rows.Add(CreateRow(contentRoot, $"Row_{i + 1}", i % 2 == 0 ? oddRowBackground : evenRowBackground, rowFontSize));
+            string rowName = $"Row_{i + 1}";
+            Color bg = i % 2 == 0 ? oddRowBackground : evenRowBackground;
+            RectTransform template = PanelSceneLayout.FindRowTemplate(contentRoot, rowTemplate);
+            if (template == null && rows.Count > 0)
+                template = rows[0].root;
+            RectTransform target = null;
+            if (preserveSceneLayout && i == 0 && template != null)
+            {
+                target = template;
+                target.gameObject.SetActive(true);
+                PanelSceneLayout.FreezeRowLayout(target);
+            }
+            else
+                target = PanelSceneLayout.GetOrCloneRow(contentRoot, rowName, preserveSceneLayout ? template : null);
+            if (target != null)
+                rows.Add(BindRow(target, bg, rowFontSize, false));
+            else
+                rows.Add(CreateRow(contentRoot, rowName, bg, rowFontSize));
         }
     }
     private void SetActiveRowCount(int count)
@@ -1207,12 +1641,15 @@ public class DataRuleConfigPanel : MonoBehaviour
     private RowView BindRow(RectTransform rect, Color bg, int fontSize, bool header)
     {
         GameObject go = rect.gameObject;
-        if (header) StretchFull(rect);
-        else
+        if (!preserveSceneLayout)
         {
-            rect.anchorMin = new Vector2(0f, 1f); rect.anchorMax = new Vector2(1f, 1f);
-            rect.pivot = new Vector2(0.5f, 1f); rect.anchoredPosition = Vector2.zero;
-            rect.sizeDelta = new Vector2(0f, rowHeight);
+            if (header) StretchFull(rect);
+            else
+            {
+                rect.anchorMin = new Vector2(0f, 1f); rect.anchorMax = new Vector2(1f, 1f);
+                rect.pivot = new Vector2(0.5f, 1f); rect.anchoredPosition = Vector2.zero;
+                rect.sizeDelta = new Vector2(0f, rowHeight);
+            }
         }
         var img = go.GetComponent<Image>();
         if (img == null) img = go.AddComponent<Image>();
@@ -1221,10 +1658,17 @@ public class DataRuleConfigPanel : MonoBehaviour
         if (le == null) le = go.AddComponent<LayoutElement>();
         le.ignoreLayout = header; le.minHeight = header ? 0f : rowHeight; le.preferredHeight = header ? 0f : rowHeight;
 
-        var h = go.GetComponent<HorizontalLayoutGroup>();
-        if (h == null) h = go.AddComponent<HorizontalLayoutGroup>();
-        h.childAlignment = TextAnchor.MiddleCenter; h.childControlWidth = true; h.childControlHeight = true;
-        h.childForceExpandWidth = false; h.childForceExpandHeight = true; h.spacing = columnSpacing; h.padding = new RectOffset(8, 8, 2, 2);
+        if (preserveSceneLayout)
+        {
+            PanelSceneLayout.FreezeRowLayout(rect);
+        }
+        else
+        {
+            var h = go.GetComponent<HorizontalLayoutGroup>();
+            if (h == null) h = go.AddComponent<HorizontalLayoutGroup>();
+            h.childAlignment = TextAnchor.MiddleCenter; h.childControlWidth = true; h.childControlHeight = true;
+            h.childForceExpandWidth = false; h.childForceExpandHeight = true; h.spacing = columnSpacing; h.padding = new RectOffset(8, 8, 2, 2);
+        }
 
         var rv = new RowView { root = rect };
         rv.rankText = FindOrCreateCell(go.transform, "Rank", header ? mutedTextColor : accentTextColor, fontSize, 22f);
@@ -1256,6 +1700,12 @@ public class DataRuleConfigPanel : MonoBehaviour
                 rv.showButton.onClick.AddListener(() => ToggleMarkerVisible(rv));
         }
 
+        rv.deleteButton = parent.Find("MarkerDelete") != null
+            ? parent.Find("MarkerDelete").GetComponent<Button>()
+            : null;
+        if (rv.deleteButton != null)
+            rv.deleteButton.gameObject.SetActive(false);
+
         if (header)
         {
             if (rv.colorButton != null)
@@ -1271,6 +1721,8 @@ public class DataRuleConfigPanel : MonoBehaviour
             }
             if (rv.showButton != null) rv.showButton.gameObject.SetActive(true);
             if (rv.showButtonLabel != null) rv.showButtonLabel.text = "显示";
+            if (rv.deleteButton != null)
+                rv.deleteButton.gameObject.SetActive(false);
         }
     }
 
@@ -1295,6 +1747,7 @@ public class DataRuleConfigPanel : MonoBehaviour
         var progress = GetProgressController();
         if (progress != null)
             progress.SetMarkerGroupColor(ViolationKey(row.boundTrackId, row.boundFieldKey), row.colorSwatch.color);
+        PersistRowVisuals(row);
     }
 
     private void ToggleMarkerVisible(RowView row)
@@ -1307,6 +1760,100 @@ public class DataRuleConfigPanel : MonoBehaviour
         var progress = GetProgressController();
         if (progress != null)
             progress.SetMarkerGroupVisible(ViolationKey(row.boundTrackId, row.boundFieldKey), show);
+        PersistRowVisuals(row);
+    }
+
+    private void PersistRowVisuals(RowView row)
+    {
+        if (row == null || string.IsNullOrEmpty(row.boundTrackId) || string.IsNullOrEmpty(row.boundFieldKey))
+            return;
+        var entries = GetEntries(row.boundTrackId);
+        for (int i = 0; i < entries.Count; i++)
+        {
+            string key = FindFieldKey(entries[i].fieldKey) ?? entries[i].fieldKey;
+            if (key != row.boundFieldKey)
+                continue;
+            if (row.colorSwatch != null)
+                entries[i].markerColor = row.colorSwatch.color;
+            if (row.showButtonLabel != null)
+                entries[i].hideMarker = row.showButtonLabel.text == "隐";
+            break;
+        }
+        SyncDictToSerialized();
+    }
+
+    private void DeleteRow(RowView row)
+    {
+        if (row == null)
+            return;
+        DeleteRow(row.boundTrackId, row.boundFieldKey);
+    }
+
+    private void DeleteRow(string trackId, string fieldKey)
+    {
+        if (isReadOnly || string.IsNullOrEmpty(trackId) || string.IsNullOrEmpty(fieldKey))
+            return;
+        var entries = GetEntries(trackId);
+        string want = FindFieldKey(fieldKey) ?? fieldKey;
+        for (int i = entries.Count - 1; i >= 0; i--)
+        {
+            string key = FindFieldKey(entries[i].fieldKey) ?? entries[i].fieldKey;
+            if (key == want)
+                entries.RemoveAt(i);
+        }
+        ShowHint($"已删除 {want}", mutedTextColor);
+        SyncDictToSerialized();
+        Refresh();
+    }
+
+    private Button FindOrCreateDeleteButton(Transform parent, string name, Button showButton, out Text label)
+    {
+        Transform existing = parent.Find(name);
+        GameObject go;
+        if (existing != null)
+            go = existing.gameObject;
+        else
+        {
+            go = new GameObject(name, typeof(RectTransform), typeof(Image), typeof(Button));
+            go.transform.SetParent(parent, false);
+            var rt = go.GetComponent<RectTransform>();
+            rt.anchorMin = new Vector2(0f, 0.5f);
+            rt.anchorMax = new Vector2(0f, 0.5f);
+            rt.pivot = new Vector2(0f, 0.5f);
+            if (showButton != null)
+            {
+                var showRt = showButton.GetComponent<RectTransform>();
+                rt.anchoredPosition = new Vector2(showRt.anchoredPosition.x + showRt.sizeDelta.x + 4f, showRt.anchoredPosition.y);
+                rt.sizeDelta = showRt.sizeDelta.sqrMagnitude > 1f ? showRt.sizeDelta : new Vector2(28f, 20f);
+            }
+            else
+            {
+                rt.anchoredPosition = new Vector2(330f, 0f);
+                rt.sizeDelta = new Vector2(28f, 20f);
+            }
+        }
+
+        var img = go.GetComponent<Image>();
+        if (img == null)
+            img = go.AddComponent<Image>();
+        img.color = new Color(0.55f, 0.18f, 0.18f, 0.95f);
+        var btn = go.GetComponent<Button>();
+        if (btn == null)
+            btn = go.AddComponent<Button>();
+        btn.targetGraphic = img;
+        label = EnsureText(go.GetComponent<RectTransform>(), "Label", Color.white, TextAnchor.MiddleCenter);
+        if (label != null)
+        {
+            label.rectTransform.anchorMin = Vector2.zero;
+            label.rectTransform.anchorMax = Vector2.one;
+            label.rectTransform.offsetMin = Vector2.zero;
+            label.rectTransform.offsetMax = Vector2.zero;
+            label.fontSize = 11;
+            label.raycastTarget = false;
+            if (string.IsNullOrEmpty(label.text) || label.text == "Label")
+                label.text = "删";
+        }
+        return btn;
     }
 
     private Button FindOrCreateColorButton(Transform parent, string name, float width)
@@ -1321,9 +1868,12 @@ public class DataRuleConfigPanel : MonoBehaviour
             go.transform.SetParent(parent, false);
         }
 
-        var le = go.GetComponent<LayoutElement>();
-        if (le == null) le = go.AddComponent<LayoutElement>();
-        le.preferredWidth = width; le.minWidth = width; le.flexibleWidth = 0f;
+        if (!preserveSceneLayout)
+        {
+            var le = go.GetComponent<LayoutElement>();
+            if (le == null) le = go.AddComponent<LayoutElement>();
+            le.preferredWidth = width; le.minWidth = width; le.flexibleWidth = 0f;
+        }
 
         var img = go.GetComponent<Image>();
         if (img == null) img = go.AddComponent<Image>();
@@ -1377,7 +1927,9 @@ public class DataRuleConfigPanel : MonoBehaviour
             var existingText = existing.GetComponent<Text>();
             if (existingText != null)
             {
-                ConfigureCell(existingText, color, fontSize, width);
+                if (!preserveSceneLayout)
+                    ConfigureCell(existingText, color, fontSize, width);
+                existingText.raycastTarget = true;
                 var input = existing.GetComponent<InputField>();
                 if (input == null)
                 {
@@ -1407,10 +1959,14 @@ public class DataRuleConfigPanel : MonoBehaviour
 
     private Dropdown suggestionDropdown;
     private bool isSelectingSuggestion;
-    private InputField activeVarInput; // The InputField that triggered the suggestion
+    private bool suppressSuggestion;
+    private InputField activeVarInput; // The InputField that triggered the suggestion; null = picker mode
 
     private void OnVarNameInputChanged(string text)
     {
+        if (suppressSuggestion)
+            return;
+
         // Store which InputField triggered this
         var eventSys = UnityEngine.EventSystems.EventSystem.current;
         if (eventSys != null && eventSys.currentSelectedGameObject != null)
@@ -1426,12 +1982,22 @@ public class DataRuleConfigPanel : MonoBehaviour
             return;
         }
 
-        text = text.Trim().ToLowerInvariant();
-        var matches = new List<string>();
-        foreach (var f in AllFields)
+        string lower = text.Trim().ToLowerInvariant();
+        EnsureFieldDict();
+
+        // 已输入完整合法 JSON key 时不再弹提示
+        string exact = FindFieldKey(text);
+        if (exact != null && exact.Equals(text.Trim(), StringComparison.OrdinalIgnoreCase))
         {
-            if (f.key.ToLowerInvariant().Contains(text) || f.displayName.Contains(text))
-                matches.Add($"{f.key} ({f.displayName})");
+            HideSuggestionPanel();
+            return;
+        }
+
+        var matches = new List<string>();
+        foreach (var f in fieldDict)
+        {
+            if (f.key.ToLowerInvariant().Contains(lower) || f.displayName.Contains(text))
+                matches.Add($"{f.key}（{f.displayName}）");
         }
 
         if (matches.Count == 0)
@@ -1440,13 +2006,116 @@ public class DataRuleConfigPanel : MonoBehaviour
             return;
         }
 
-        ShowSuggestionPanel(matches);
+        ShowSuggestionPanel(matches, "候选变量（JSON key）— 点击选择");
     }
 
-    private void ShowSuggestionPanel(List<string> matches)
+    private void BindAddButton()
+    {
+        Button addBtn = null;
+        Transform footer = null;
+        var buttons = GetComponentsInChildren<Button>(true);
+        for (int i = 0; i < buttons.Length; i++)
+        {
+            var b = buttons[i];
+            if (b == null)
+                continue;
+            string n = b.gameObject.name;
+            var label = b.GetComponentInChildren<Text>(true);
+            string t = label != null ? label.text : "";
+            if (n == "DeleteBtn" || t.Contains("删除行"))
+                continue;
+            if (n == "AddBtn" || n.Contains("添加") || t.Contains("添加行") || t.Contains("添加变量") || t.Contains("添加"))
+            {
+                addBtn = b;
+                footer = b.transform.parent;
+                break;
+            }
+        }
+
+        if (addBtn != null)
+        {
+            addBtn.onClick.RemoveListener(OnAddEntryClicked);
+            addBtn.onClick.AddListener(OnAddEntryClicked);
+            addBtn.interactable = true;
+            var addRt = addBtn.GetComponent<RectTransform>();
+            if (addRt != null)
+            {
+                addRt.anchorMin = new Vector2(0f, 0.5f);
+                addRt.anchorMax = new Vector2(0f, 0.5f);
+                addRt.pivot = new Vector2(0f, 0.5f);
+                addRt.anchoredPosition = new Vector2(8f, 0f);
+                if (addRt.sizeDelta.x < 80f)
+                    addRt.sizeDelta = new Vector2(100f, 28f);
+            }
+            if (footer != null)
+            {
+                var hlg = footer.GetComponent<HorizontalLayoutGroup>();
+                if (hlg != null)
+                    hlg.enabled = false;
+            }
+        }
+
+        if (footer == null)
+            footer = addButtonRoot != null ? addButtonRoot : (inputBarRoot != null ? inputBarRoot : transform);
+
+        Button deleteBtn = null;
+        var existing = footer.Find("DeleteBtn");
+        if (existing != null)
+            deleteBtn = existing.GetComponent<Button>();
+        if (deleteBtn == null)
+        {
+            for (int i = 0; i < buttons.Length; i++)
+            {
+                var label = buttons[i].GetComponentInChildren<Text>(true);
+                if (label != null && label.text.Contains("删除行"))
+                {
+                    deleteBtn = buttons[i];
+                    break;
+                }
+            }
+        }
+        if (deleteBtn == null)
+        {
+            var go = new GameObject("DeleteBtn", typeof(RectTransform), typeof(Image), typeof(Button));
+            go.transform.SetParent(footer, false);
+            var img = go.GetComponent<Image>();
+            img.color = new Color(0.55f, 0.18f, 0.18f, 0.95f);
+            deleteBtn = go.GetComponent<Button>();
+            deleteBtn.targetGraphic = img;
+            var labelGo = new GameObject("Label", typeof(RectTransform), typeof(Text));
+            labelGo.transform.SetParent(go.transform, false);
+            var lrt = labelGo.GetComponent<RectTransform>();
+            lrt.anchorMin = Vector2.zero; lrt.anchorMax = Vector2.one;
+            lrt.offsetMin = Vector2.zero; lrt.offsetMax = Vector2.zero;
+            var lt = labelGo.GetComponent<Text>();
+            if (font != null) lt.font = font;
+            lt.fontSize = rowFontSize; lt.color = Color.white;
+            lt.alignment = TextAnchor.MiddleCenter;
+            lt.text = "删除行";
+            lt.raycastTarget = false;
+        }
+
+        var delRt = deleteBtn.GetComponent<RectTransform>();
+        delRt.anchorMin = new Vector2(1f, 0.5f);
+        delRt.anchorMax = new Vector2(1f, 0.5f);
+        delRt.pivot = new Vector2(1f, 0.5f);
+        delRt.anchoredPosition = new Vector2(-8f, 0f);
+        delRt.sizeDelta = new Vector2(88f, 28f);
+        deleteBtn.onClick.RemoveListener(OnDeleteRowClicked);
+        deleteBtn.onClick.AddListener(OnDeleteRowClicked);
+        deleteBtn.interactable = true;
+        var delLabel = deleteBtn.GetComponentInChildren<Text>(true);
+        if (delLabel != null)
+            delLabel.text = "删除行";
+    }
+
+    private void ShowSuggestionPanel(List<string> matches, string title)
     {
         RectTransform container = transform.Find("DataRuleConfigRoot") as RectTransform;
-        if (container == null) return;
+        if (container == null)
+            container = GetComponent<RectTransform>();
+        if (container == null)
+            return;
 
         // Find or create suggestion overlay
         RectTransform overlay = FindOrCreateRect(container, "SuggestionOverlay");
@@ -1485,7 +2154,7 @@ public class DataRuleConfigPanel : MonoBehaviour
         titleText.rectTransform.pivot = new Vector2(0.5f, 1f);
         titleText.rectTransform.sizeDelta = new Vector2(0f, 24f);
         titleText.rectTransform.anchoredPosition = Vector2.zero;
-        titleText.text = $"候选变量名 ({matches.Count}) —点击选择";
+        titleText.text = title;
 
         // Close button
         RectTransform closeRect = FindOrCreateRect(overlay, "CloseBtn");
@@ -1511,7 +2180,7 @@ public class DataRuleConfigPanel : MonoBehaviour
         for (int i = 0; i < matches.Count; i++)
         {
             string match = matches[i];
-            string key = match.Split(' ')[0];
+            string key = ExtractKeyFromMatch(match);
 
             RectTransform btnRect = FindOrCreateRect(overlay, $"MatchBtn_{i}");
             btnRect.anchorMin = new Vector2(0.1f, 1f);
@@ -1539,11 +2208,20 @@ public class DataRuleConfigPanel : MonoBehaviour
         overlay.gameObject.SetActive(true);
     }
 
+    private static string ExtractKeyFromMatch(string match)
+    {
+        if (string.IsNullOrEmpty(match)) return match;
+        int idx = match.IndexOf('（');
+        return idx > 0 ? match.Substring(0, idx).Trim() : match.Trim();
+    }
+
     private void OnSuggestionButtonClicked(string key)
     {
         if (activeVarInput != null)
         {
+            suppressSuggestion = true;
             activeVarInput.text = key;
+            suppressSuggestion = false;
 
             var es = UnityEngine.EventSystems.EventSystem.current;
             if (es != null)
@@ -1553,6 +2231,11 @@ public class DataRuleConfigPanel : MonoBehaviour
             }
 
             Debug.Log($"[DataRuleConfigPanel] Filled '{key}' into InputField");
+        }
+        else
+        {
+            // 加号选变量模式：没有正在编辑的输入框 → 直接添加一行该变量的规则
+            AddEntryWithFieldKey(key);
         }
 
         activeVarInput = null;
@@ -1573,7 +2256,8 @@ public class DataRuleConfigPanel : MonoBehaviour
         Transform existing = parent.Find(name);
         if (existing != null && existing.TryGetComponent(out Text existingText))
         {
-            ConfigureCell(existingText, color, fontSize, width);
+            if (!preserveSceneLayout)
+                ConfigureCell(existingText, color, fontSize, width);
             return existingText;
         }
         return CreateCell(parent, name, color, fontSize, width);
@@ -1581,15 +2265,71 @@ public class DataRuleConfigPanel : MonoBehaviour
 
     private InputField FindOrCreateRuleInput(Transform parent, string name, Color color, int fontSize, float width)
     {
+        CleanupDuplicateChildren(parent, name);
         Transform existing = parent.Find(name);
         if (existing != null && existing.TryGetComponent(out InputField existingInput))
         {
-            var le = existing.GetComponent<LayoutElement>();
-            if (le == null) le = existing.gameObject.AddComponent<LayoutElement>();
-            le.minWidth = width; le.preferredWidth = width; le.flexibleWidth = 0f;
+            CollapseRuleGraphics(existingInput);
             return existingInput;
         }
-        return CreateRuleInput(parent, name, color, fontSize, width);
+
+        if (existing != null && existing.TryGetComponent(out Text existingText))
+        {
+            existingText.raycastTarget = true;
+            existingText.supportRichText = false;
+            var nested = existing.GetComponentInChildren<InputField>(true);
+            if (nested != null && nested.gameObject != existing.gameObject)
+            {
+                if (Application.isPlaying) UnityEngine.Object.Destroy(nested.gameObject);
+                else UnityEngine.Object.DestroyImmediate(nested.gameObject);
+            }
+            var input = existing.gameObject.AddComponent<InputField>();
+            input.textComponent = existingText;
+            input.targetGraphic = existingText;
+            input.contentType = InputField.ContentType.Standard;
+            input.lineType = InputField.LineType.SingleLine;
+            CollapseRuleGraphics(input);
+            return input;
+        }
+
+        var created = CreateRuleInput(parent, name, color, fontSize, width);
+        CollapseRuleGraphics(created);
+        return created;
+    }
+
+    private static void CleanupDuplicateChildren(Transform parent, string name)
+    {
+        if (parent == null || string.IsNullOrEmpty(name))
+            return;
+        Transform keep = null;
+        for (int i = parent.childCount - 1; i >= 0; i--)
+        {
+            Transform child = parent.GetChild(i);
+            if (child == null || (child.name != name && !child.name.StartsWith(name + " ")))
+                continue;
+            if (keep == null)
+            {
+                keep = child;
+                keep.name = name;
+                continue;
+            }
+            if (Application.isPlaying) UnityEngine.Object.Destroy(child.gameObject);
+            else UnityEngine.Object.DestroyImmediate(child.gameObject);
+        }
+    }
+
+    private static void CollapseRuleGraphics(InputField input)
+    {
+        if (input == null)
+            return;
+        var selfText = input.GetComponent<Text>();
+        if (selfText != null && input.textComponent != null && input.textComponent != selfText)
+            selfText.enabled = false;
+        if (input.textComponent != null)
+        {
+            input.textComponent.supportRichText = false;
+            input.textComponent.raycastTarget = input.textComponent == selfText || input.targetGraphic == input.textComponent;
+        }
     }
 
     private Text CreateCell(Transform parent, string name, Color color, int fontSize, float width)

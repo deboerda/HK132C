@@ -22,7 +22,7 @@ public class FlightDataStreamClient : MonoBehaviour
     public int Port => port;
     public bool IsConnected => client != null && client.Connected && stream != null;
 
-    [Serializable]
+    // 纯 Newtonsoft.Json DTO，从不被 Unity 序列化；不加 [Serializable] 以消除 UAC1001（object 字段）
     private class CommandEnvelope
     {
         public string uuid;

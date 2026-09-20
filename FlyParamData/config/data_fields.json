@@ -1,0 +1,109 @@
+{
+  "fields": {
+    "trackId": [
+      "trackId",
+      "飞机ID",
+      "飞机编号"
+    ],
+    "planId": [
+      "planId",
+      "计划ID",
+      "飞行计划"
+    ],
+    "flightTime": [
+      "flightTime",
+      "时间",
+      "飞行时间"
+    ],
+    "lng": [
+      "lng",
+      "经度",
+      "经"
+    ],
+    "lat": [
+      "lat",
+      "纬度"
+    ],
+    "alt": [
+      "alt",
+      "高度"
+    ],
+    "heading": [
+      "heading",
+      "航向角(度)",
+      "航向",
+      "航向角"
+    ],
+    "pitch": [
+      "pitch",
+      "俯仰角(度)",
+      "俯仰",
+      "俯仰角"
+    ],
+    "roll": [
+      "roll",
+      "横滚角(度)",
+      "横滚",
+      "横滚角"
+    ],
+    "state": [
+      "飞行状态",
+      "state",
+      "状态"
+    ],
+    "battery": [
+      "电量(%)",
+      "battery",
+      "电量"
+    ],
+    "speed": [
+      "速度(米/秒)",
+      "speed",
+      "速度"
+    ],
+    "alarm": [
+      "告警信息",
+      "alarm",
+      "告警"
+    ],
+    "detector_type": [
+      "探测器类型",
+      "detector_type"
+    ],
+    "yaw_angle": [
+      "扫描中心(度)",
+      "yaw_a",
+      "gle",
+      "传感器左右偏转角"
+    ],
+    "pitch_angle": [
+      "俯仰中心(度)",
+      "pitch_a",
+      "gle",
+      "传感器上下偏转角"
+    ],
+    "center_point": [
+      "中心点",
+      "ce",
+      "ter_poi",
+      "t"
+    ],
+    "radar_status": [
+      "探测器状态",
+      "radar_status",
+      "雷达状态"
+    ],
+    "center_point1": [
+      "中心点",
+      "传感器位置"
+    ],
+    "yaw_scan_angle": [
+      "扫描方位(度)",
+      "传感器左右扫描范围"
+    ],
+    "pitch_scan_angle": [
+      "俯仰方位(度)",
+      "传感器上下扫描范围"
+    ]
+  }
+}

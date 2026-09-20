@@ -9,11 +9,10 @@ public class AlarmPanel : MonoBehaviour
     private class RowView
     {
         public RectTransform root;
-        public Text rankText;
         public Text idText;
         public Text alarmText;
+        public Text timeText;
         public Text stateText;
-        public Text batteryText;
     }
 
     private class AlarmEntry
@@ -23,7 +22,6 @@ public class AlarmPanel : MonoBehaviour
         public string trackId;
         public string alarm;
         public string state;
-        public float battery;
     }
 
     [Header("Data")]
@@ -36,6 +34,9 @@ public class AlarmPanel : MonoBehaviour
     [SerializeField] private RectTransform selectorRoot;
     [SerializeField] private RectTransform headerRoot;
     [SerializeField] private RectTransform contentRoot;
+    [SerializeField] private RectTransform rowTemplate;
+    [Tooltip("标题和数据列使用 Scene 里拖好的坐标；运行时只改文字。")]
+    [SerializeField] private bool preserveSceneLayout = true;
     [SerializeField] private bool autoCreateLayout = true;
     [SerializeField] private float selectorHeight = 34f;
     [SerializeField] private float headerHeight = 32f;
@@ -74,7 +75,7 @@ public class AlarmPanel : MonoBehaviour
         if (font == null)
             font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
 
-        if (autoCreateLayout)
+        if (autoCreateLayout && !preserveSceneLayout)
             EnsureLayoutObjects();
 
         if (planeDropdown != null)
@@ -83,15 +84,25 @@ public class AlarmPanel : MonoBehaviour
             planeDropdown.onValueChanged.AddListener(OnDropdownChanged);
         }
 
-        EnsureVerticalLayout(headerRoot, false);
-        EnsureVerticalLayout(contentRoot, true);
-        ApplyHeaderViewportInset();
+        if (!preserveSceneLayout)
+        {
+            EnsureVerticalLayout(headerRoot, false);
+            EnsureVerticalLayout(contentRoot, true);
+            ApplyHeaderViewportInset();
+        }
 
         if (headerRoot != null)
         {
             headerRow = FindOrCreateHeaderRow();
-            SetRowTexts(headerRow, "#", "飞机编号", "告警信息", "状态", "电量");
+            SetRowTexts(headerRow, "飞机编号", "告警信息", "时间", "状态");
         }
+        CollectSceneDataRows();
+    }
+
+    private void CollectSceneDataRows()
+    {
+        if (rowTemplate == null)
+            rowTemplate = PanelSceneLayout.FindRowTemplate(contentRoot, rowTemplate);
     }
 
     private void Update()
@@ -141,10 +152,13 @@ public class AlarmPanel : MonoBehaviour
             var entry = visibleEntries[i];
             string id = string.IsNullOrWhiteSpace(entry.trackId) ? "unknown" : entry.trackId;
             string alarm = string.IsNullOrWhiteSpace(entry.alarm) ? "正常" : entry.alarm;
-            string stateStr = string.IsNullOrWhiteSpace(entry.state) ? "-" : entry.state;
-            string battery = entry.battery > 0 ? $"{entry.battery:F1}%" : "-";
+            bool abnormal = IsAbnormalStatus(entry.alarm, entry.state);
+            string stateStr = abnormal ? "异常" : "正常";
+            string time = string.IsNullOrWhiteSpace(entry.flightTime) ? "-" : entry.flightTime;
 
-            SetRowTexts(rows[i], (i + 1).ToString(), id, alarm, stateStr, battery);
+            SetRowTexts(rows[i], id, alarm, time, stateStr);
+            if (rows[i].stateText != null)
+                rows[i].stateText.color = abnormal ? alarmDangerColor : alarmNormalColor;
 
             if (rows[i].alarmText != null)
             {
@@ -172,22 +186,32 @@ public class AlarmPanel : MonoBehaviour
             string alarm = string.IsNullOrWhiteSpace(state.alarm) ? "正常" : state.alarm;
             string stateText = string.IsNullOrWhiteSpace(state.state) ? "-" : state.state;
             string flightTime = string.IsNullOrWhiteSpace(state.flightTime) ? Time.frameCount.ToString() : state.flightTime;
-            string key = $"{flightTime}|{trackId}|{alarm}|{stateText}";
+            string identity = $"{trackId}|{alarm}|{stateText}";
 
-            if (alarmKeys.Contains(key))
+            AlarmEntry existing = null;
+            for (int i = 0; i < alarmHistory.Count; i++)
             {
+                if (alarmHistory[i] != null && alarmHistory[i].key == identity)
+                {
+                    existing = alarmHistory[i];
+                    break;
+                }
+            }
+
+            if (existing != null)
+            {
+                existing.flightTime = flightTime;
                 continue;
             }
 
-            alarmKeys.Add(key);
+            alarmKeys.Add(identity);
             newEntries.Add(new AlarmEntry
             {
-                key = key,
+                key = identity,
                 flightTime = flightTime,
                 trackId = trackId,
                 alarm = alarm,
                 state = stateText,
-                battery = state.battery,
             });
         }
 
@@ -205,6 +229,16 @@ public class AlarmPanel : MonoBehaviour
             alarmHistory.Insert(0, newEntries[i]);
         }
 
+        alarmHistory.Sort((a, b) =>
+        {
+            if (a == null && b == null) return 0;
+            if (a == null) return 1;
+            if (b == null) return -1;
+            int timeCompare = string.Compare(b.flightTime, a.flightTime, StringComparison.Ordinal);
+            if (timeCompare != 0) return timeCompare;
+            return string.Compare(a.trackId, b.trackId, StringComparison.Ordinal);
+        });
+
         int historyLimit = Mathf.Max(maxRows, maxHistoryEntries);
         while (alarmHistory.Count > historyLimit)
         {
@@ -215,6 +249,27 @@ public class AlarmPanel : MonoBehaviour
             }
             alarmHistory.RemoveAt(alarmHistory.Count - 1);
         }
+    }
+
+    private static bool IsAbnormalStatus(string alarm, string state)
+    {
+        if (!string.IsNullOrWhiteSpace(alarm))
+        {
+            string a = alarm.Trim();
+            if (a != "正常" && a != "无" && a != "-" && !a.Equals("normal", StringComparison.OrdinalIgnoreCase) && !a.Equals("none", StringComparison.OrdinalIgnoreCase))
+                return true;
+        }
+        if (!string.IsNullOrWhiteSpace(state))
+        {
+            string s = state.Trim();
+            if (s.Contains("异常") || s.Contains("故障") || s.Contains("告警") ||
+                s.Equals("abnormal", StringComparison.OrdinalIgnoreCase) ||
+                s.Equals("fault", StringComparison.OrdinalIgnoreCase) ||
+                s.Equals("alarm", StringComparison.OrdinalIgnoreCase) ||
+                s.Equals("error", StringComparison.OrdinalIgnoreCase))
+                return true;
+        }
+        return false;
     }
 
     private int GetAlarmSeverity(string alarm)
@@ -664,7 +719,23 @@ public class AlarmPanel : MonoBehaviour
         {
             int index = rows.Count;
             Color bg = index % 2 == 0 ? oddRowBackground : evenRowBackground;
-            rows.Add(CreateRow(contentRoot, $"AlarmRow_{index + 1}", bg, rowFontSize));
+            string rowName = $"AlarmRow_{index + 1}";
+            RectTransform template = PanelSceneLayout.FindRowTemplate(contentRoot, rowTemplate);
+            if (template == null && rows.Count > 0)
+                template = rows[0].root;
+            RectTransform target = null;
+            if (preserveSceneLayout && index == 0 && template != null)
+            {
+                target = template;
+                target.gameObject.SetActive(true);
+                PanelSceneLayout.FreezeRowLayout(target);
+            }
+            else
+                target = PanelSceneLayout.GetOrCloneRow(contentRoot, rowName, preserveSceneLayout ? template : null);
+            if (target != null)
+                rows.Add(BindRow(target, bg, rowFontSize, false, true));
+            else
+                rows.Add(CreateRow(contentRoot, rowName, bg, rowFontSize));
         }
     }
 
@@ -699,15 +770,18 @@ public class AlarmPanel : MonoBehaviour
     {
         GameObject rowObject = rect.gameObject;
 
-        if (header)
-            StretchFull(rect);
-        else
+        if (!preserveExistingHeaderCells)
         {
-            rect.anchorMin = new Vector2(0f, 1f);
-            rect.anchorMax = new Vector2(1f, 1f);
-            rect.pivot = new Vector2(0.5f, 1f);
-            rect.anchoredPosition = Vector2.zero;
-            rect.sizeDelta = new Vector2(0f, rowHeight);
+            if (header)
+                StretchFull(rect);
+            else
+            {
+                rect.anchorMin = new Vector2(0f, 1f);
+                rect.anchorMax = new Vector2(1f, 1f);
+                rect.pivot = new Vector2(0.5f, 1f);
+                rect.anchoredPosition = Vector2.zero;
+                rect.sizeDelta = new Vector2(0f, rowHeight);
+            }
         }
 
         var image = rowObject.GetComponent<Image>();
@@ -723,7 +797,11 @@ public class AlarmPanel : MonoBehaviour
         layoutElement.preferredHeight = header ? 0f : rowHeight;
 
         var horizontal = rowObject.GetComponent<HorizontalLayoutGroup>();
-        if (!preserveExistingHeaderCells)
+        if (preserveExistingHeaderCells || preserveSceneLayout)
+        {
+            PanelSceneLayout.FreezeRowLayout(rect);
+        }
+        else if (!preserveExistingHeaderCells)
         {
             if (horizontal == null)
                 horizontal = rowObject.AddComponent<HorizontalLayoutGroup>();
@@ -737,17 +815,26 @@ public class AlarmPanel : MonoBehaviour
             horizontal.padding = new RectOffset(8, 8, 2, 2);
         }
 
-        RemoveCellIfExists(rowObject.transform, "Time");
+        RemoveCellIfExists(rowObject.transform, "Rank");
+        RemoveCellIfExists(rowObject.transform, "Battery");
 
-        return new RowView
+        var rowView = new RowView
         {
             root = rect,
-            rankText = FindOrCreateCell(rowObject.transform, "Rank", header ? mutedTextColor : accentTextColor, fontSize, 42f, 0f, preserveExistingHeaderCells),
-            idText = FindOrCreateCell(rowObject.transform, "PlaneId", textColor, fontSize, 112f, 0f, preserveExistingHeaderCells),
-            alarmText = FindOrCreateCell(rowObject.transform, "Alarm", textColor, fontSize, 120f, 0f, preserveExistingHeaderCells),
+            idText = FindOrCreateCell(rowObject.transform, "PlaneId", textColor, fontSize, 100f, 0f, preserveExistingHeaderCells),
+            alarmText = FindOrCreateCell(rowObject.transform, "Alarm", textColor, fontSize, 120f, 1f, preserveExistingHeaderCells),
+            timeText = FindOrCreateCell(rowObject.transform, "Time", mutedTextColor, fontSize, 148f, 0f, preserveExistingHeaderCells),
             stateText = FindOrCreateCell(rowObject.transform, "State", mutedTextColor, fontSize, 86f, 0f, preserveExistingHeaderCells),
-            batteryText = FindOrCreateCell(rowObject.transform, "Battery", mutedTextColor, fontSize, 60f, 0f, preserveExistingHeaderCells),
         };
+
+        // 场景中可能残留旧列顺序，统一为：飞机编号、告警信息、时间、状态
+        rowView.idText.transform.SetSiblingIndex(0);
+        rowView.alarmText.transform.SetSiblingIndex(1);
+        rowView.timeText.transform.SetSiblingIndex(2);
+        rowView.stateText.transform.SetSiblingIndex(3);
+        ConfigureTimeCell(rowView.timeText);
+
+        return rowView;
     }
 
     private static void RemoveCellIfExists(Transform parent, string name)
@@ -800,13 +887,47 @@ public class AlarmPanel : MonoBehaviour
         layoutElement.flexibleWidth = flexibleWidth;
     }
 
-    private void SetRowTexts(RowView row, string rank, string planeId, string alarm, string state, string battery)
+    private void ConfigureTimeCell(Text text)
+    {
+        if (text == null)
+            return;
+        text.alignment = TextAnchor.MiddleCenter;
+        text.horizontalOverflow = HorizontalWrapMode.Wrap;
+        text.verticalOverflow = VerticalWrapMode.Truncate;
+        if (preserveSceneLayout)
+            return;
+        var layoutElement = text.GetComponent<LayoutElement>();
+        if (layoutElement == null)
+            layoutElement = text.gameObject.AddComponent<LayoutElement>();
+        layoutElement.minWidth = 148f;
+        layoutElement.preferredWidth = 148f;
+        layoutElement.flexibleWidth = 0f;
+    }
+
+    private static string FormatAlarmTime(string time)
+    {
+        if (string.IsNullOrWhiteSpace(time))
+            return "-";
+        time = time.Trim();
+        int space = time.IndexOf(' ');
+        if (space > 0 && space + 1 < time.Length)
+            time = time.Substring(space + 1);
+        int dot = time.IndexOf('.');
+        if (dot >= 0 && time.Length > dot + 4)
+            time = time.Substring(0, dot + 4);
+        return time;
+    }
+
+    private void SetRowTexts(RowView row, string planeId, string alarm, string time, string state)
     {
         if (row == null) return;
-        if (row.rankText != null) row.rankText.text = rank;
         if (row.idText != null) row.idText.text = planeId;
         if (row.alarmText != null) row.alarmText.text = alarm;
+        if (row.timeText != null)
+        {
+            ConfigureTimeCell(row.timeText);
+            row.timeText.text = row == headerRow ? time : FormatAlarmTime(time);
+        }
         if (row.stateText != null) row.stateText.text = state;
-        if (row.batteryText != null) row.batteryText.text = battery;
     }
 }

@@ -101,6 +101,7 @@ public class FlightPlaybackPanel : MonoBehaviour
     private void Update()
     {
         ApplyPendingTaskTimeInfo();
+        ApplyLatestTaskTimeIfReady();
         ApplyPendingFlightTime();
         UpdateRealtimeClock();
         UpdateConnectionUI();
@@ -314,16 +315,29 @@ public class FlightPlaybackPanel : MonoBehaviour
             pendingTaskTimeInfo = null;
         }
 
-        SetFlightTimeRange(0f, info.durationSeconds);
+        float duration = info.durationSeconds;
+        if (duration <= 0.01f &&
+            TryParseLocalTime(info.startTime, out DateTime start) &&
+            TryParseLocalTime(info.endTime, out DateTime end))
+        {
+            duration = Mathf.Max(0f, (float)(end - start).TotalSeconds);
+        }
+
+        if (duration <= 0.01f)
+            duration = maxFlightTime;
+
+        SetFlightTimeRange(0f, duration);
         taskStartTime = info.startTime;
 
         if (seekTimeInput != null && !string.IsNullOrWhiteSpace(info.startTime))
             seekTimeInput.SetTextWithoutNotify(info.startTime);
 
+        if (timeScaleRuler == null)
+            timeScaleRuler = FindAnyObjectByType<Unity_TimeScale>();
         if (timeScaleRuler != null)
-            timeScaleRuler.SetTimeRange(0f, info.durationSeconds, info.startTime, info.endTime);
+            timeScaleRuler.SetTimeRange(0f, duration, info.startTime, info.endTime);
 
-        Log($"Task time range applied: {info.startTime} ~ {info.endTime}, max={info.durationSeconds:F3}s");
+        Log($"Task time range applied: {info.startTime} ~ {info.endTime}, max={duration:F3}s");
     }
 
     private void ApplyLatestTaskTimeIfReady()
@@ -349,14 +363,21 @@ public class FlightPlaybackPanel : MonoBehaviour
             pendingFlightTime = -1f;
         }
 
-        // Pause/stop must freeze the slider. While playing, trust the stream even if
-        // time jitters slightly backward. Ignore a 0-reset unless we are stopped.
-        if (currentState != PlaybackState.Playing)
+        // Pause/stop freeze the slider. Idle still accepts the first live frames so
+        // the handle moves as soon as TASK_TIME_INFO + cycle/event time arrive.
+        if (currentState == PlaybackState.Paused || currentState == PlaybackState.Stopped)
             return;
         if (time < 0.01f && currentFlightTime > 1f)
             return;
         if (time > maxFlightTime && time > minFlightTime)
-            SetFlightTimeRange(minFlightTime, time);
+        {
+            var info = FlightDataStreamReceiver.Instance != null
+                ? FlightDataStreamReceiver.Instance.LatestTaskTimeInfo
+                : null;
+            float cap = info != null && info.durationSeconds > 0.01f ? info.durationSeconds : time;
+            if (time > maxFlightTime)
+                SetFlightTimeRange(minFlightTime, Mathf.Max(maxFlightTime, cap));
+        }
         SetFlightTime(time);
     }
 
@@ -370,11 +391,36 @@ public class FlightPlaybackPanel : MonoBehaviour
         return SeekToTime(targetTime);
     }
 
+    private static readonly string[] FlightTimeFormats =
+    {
+        "yyyy-MM-dd HH:mm:ss.ffffff",
+        "yyyy-MM-dd HH:mm:ss.fff",
+        "yyyy-MM-dd HH:mm:ss.ff",
+        "yyyy-MM-dd HH:mm:ss.f",
+        "yyyy-MM-dd HH:mm:ss",
+    };
+
     private static bool TryParseLocalTime(string value, out DateTime time)
     {
-        return DateTime.TryParseExact(value, "yyyy-MM-dd HH:mm:ss.fff",
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            time = default;
+            return false;
+        }
+
+        if (DateTime.TryParseExact(
+            value.Trim(),
+            FlightTimeFormats,
             System.Globalization.CultureInfo.InvariantCulture,
-            System.Globalization.DateTimeStyles.None, out time);
+            System.Globalization.DateTimeStyles.None,
+            out time))
+            return true;
+
+        return DateTime.TryParse(
+            value,
+            System.Globalization.CultureInfo.InvariantCulture,
+            System.Globalization.DateTimeStyles.AllowWhiteSpaces,
+            out time);
     }
 
     private static string FormatTimeShort(string fullTime)
@@ -396,7 +442,12 @@ public class FlightPlaybackPanel : MonoBehaviour
             currentTimeText.text = $"{currentFlightTime:F1}s / {maxFlightTime:F1}s";
 
         if (progressText != null)
-            progressText.text = $"进度: {normalized * 100f:F1}%";
+        {
+            string clock = "";
+            if (!string.IsNullOrWhiteSpace(taskStartTime) && TryParseLocalTime(taskStartTime, out DateTime start))
+                clock = $"  {start.AddSeconds(currentFlightTime):HH:mm:ss}";
+            progressText.text = $"进度: {normalized * 100f:F1}%{clock}";
+        }
 
         if (timeScaleRuler != null)
             timeScaleRuler.SetCurrentTime(currentFlightTime);
