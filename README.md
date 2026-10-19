@@ -58,7 +58,7 @@ tcp_3d_demo.py      # End-to-end data-send demo
 
 ## Role
 
-**Project lead & core digital twin / simulation engineer** — architecture, data protocols, simulation integration, and 3D/runtime as one system (full-stack twin, not a front-end-only role).
+**Project lead & core digital twin / simulation engineer** — architecture, data protocols, simulation integration, and 3D/runtime as one full-stack system.
 
 ---
 
