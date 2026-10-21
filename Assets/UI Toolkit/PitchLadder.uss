@@ -1,0 +1,50 @@
+/* Pitch Ladder Instrument — USS (colors only, layout via C#) */
+
+.pitch-ladder {
+    background-color: rgba(0, 0, 0, 0);
+    overflow: hidden;
+}
+
+.pl-clip {
+    overflow: hidden;
+}
+
+.pl-marks {
+}
+
+.pl-center {
+}
+
+.pl-line {
+    background-color: rgba(224, 240, 255, 0.95);
+}
+
+.pl-line-center {
+    background-color: rgba(102, 230, 255, 1);
+}
+
+.pl-line-horizon {
+    background-color: rgba(224, 240, 255, 0.95);
+}
+
+.pl-dash {
+    background-color: rgba(224, 240, 255, 0.95);
+}
+
+.pl-tail {
+    background-color: rgba(224, 240, 255, 0.95);
+}
+
+.pl-arc {
+    background-color: rgba(102, 230, 255, 1);
+}
+
+.pl-number {
+    color: rgba(224, 240, 255, 0.95);
+    -unity-font-style: bold;
+}
+
+.pl-horizon-label {
+    color: rgba(224, 240, 255, 0.95);
+    -unity-font-style: bold;
+}

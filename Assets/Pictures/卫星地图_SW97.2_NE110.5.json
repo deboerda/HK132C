@@ -1,0 +1,23 @@
+{
+  "source": "Esri World Imagery",
+  "crs": "EPSG:4326",
+  "southWest": {
+    "lon": 97.2,
+    "lat": 26.2
+  },
+  "northEast": {
+    "lon": 110.5,
+    "lat": 34.9
+  },
+  "lonMin": 97.2,
+  "lonMax": 110.5,
+  "latMin": 26.2,
+  "latMax": 34.9,
+  "zoom": 10,
+  "width": 9685,
+  "height": 7368,
+  "metersPerPixelApprox": 131.65298529531717,
+  "image": "卫星地图_SW97.2_NE110.5.jpg",
+  "worldFile": "卫星地图_SW97.2_NE110.5.jgw",
+  "note": "North is up. Pixel (0,0) is northwest. Do not apply GCJ-02 offset."
+}

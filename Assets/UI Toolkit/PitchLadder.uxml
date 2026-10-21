@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<engine:UXML xmlns:engine="UnityEngine.UIElements">
+    <engine:VisualElement class="pitch-ladder" name="PitchLadder">
+        <engine:VisualElement class="pl-clip" name="ClipWindow">
+            <engine:VisualElement class="pl-marks" name="Marks" />
+        </engine:VisualElement>
+        <engine:VisualElement class="pl-center" name="CenterMarker" />
+    </engine:VisualElement>
+</engine:UXML>

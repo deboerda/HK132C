@@ -1,0 +1,20 @@
+/* Time Scale Ruler — USS Stylesheet */
+
+.time-scale {
+    background-color: rgba(10, 14, 20, 0.85);
+    overflow: hidden;
+}
+
+.ticks-container {
+    flex-grow: 1;
+    overflow: hidden;
+    position: relative;
+}
+
+.time-range-label {
+    font-size: 11px;
+    color: rgb(217, 230, 255);
+    -unity-font-style: bold;
+    -unity-text-align: middle-center;
+    height: 18px;
+}

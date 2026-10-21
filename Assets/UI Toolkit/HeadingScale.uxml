@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<engine:UXML xmlns:engine="UnityEngine.UIElements">
+    <engine:VisualElement class="heading-scale" name="HeadingScale" style="width: 400px; height: 60px;">
+        <engine:VisualElement class="clip-window" name="ClipWindow">
+            <engine:VisualElement class="scale-tape" name="ScaleTape" />
+        </engine:VisualElement>
+        <engine:VisualElement class="center-index" name="CenterIndex" />
+        <engine:VisualElement class="center-index-tab" name="CenterIndexTab" />
+        <engine:Label class="command-marker" name="CommandMarker" text="^" />
+        <engine:Label class="tm-label" name="TMLabel" text="T" />
+        <engine:Label class="heading-readout" name="HeadingReadout" text="000&#176;" />
+    </engine:VisualElement>
+</engine:UXML>

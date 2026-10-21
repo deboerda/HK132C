@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<engine:UXML xmlns:engine="UnityEngine.UIElements">
+    <engine:VisualElement class="tape-inst" name="TapeRoot">
+        <engine:VisualElement class="tape-clip" name="ClipWindow">
+            <engine:VisualElement class="tape-scale" name="ScaleTape" />
+        </engine:VisualElement>
+        <engine:VisualElement class="tape-pointer" name="Pointer" />
+        <engine:Label class="tape-readout" name="Readout" text="0000" />
+        <engine:Label class="tape-id" name="Identifier" text="IS" />
+    </engine:VisualElement>
+</engine:UXML>

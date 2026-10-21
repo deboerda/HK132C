@@ -1,0 +1,17 @@
+/* Bank Scale Instrument — USS Stylesheet ( colours only, layout via C# ) */
+
+.bank-scale {
+    background-color: rgba(8, 12, 18, 0);
+    overflow: hidden;
+}
+
+.bs-arc {
+}
+
+.bs-pointer {
+}
+
+.bs-readout {
+    color: rgba(255, 200, 0, 1);
+    -unity-font-style: bold;
+}

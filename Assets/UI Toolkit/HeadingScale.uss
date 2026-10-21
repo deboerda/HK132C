@@ -1,0 +1,41 @@
+/* Heading Scale Instrument — USS Stylesheet (colors only) */
+
+.heading-scale {
+    background-color: rgba(8, 12, 18, 0.88);
+}
+
+.tick-major {
+    background-color: rgb(200, 210, 220);
+}
+
+.tick-minor {
+    background-color: rgb(110, 120, 130);
+}
+
+.tick-number {
+    color: rgb(200, 210, 220);
+    -unity-font-style: bold;
+}
+
+.center-index {
+    background-color: rgb(255, 200, 0);
+}
+
+.center-index-tab {
+    background-color: rgb(255, 200, 0);
+}
+
+.command-marker {
+    color: rgb(0, 255, 100);
+    -unity-font-style: bold;
+}
+
+.tm-label {
+    color: rgb(180, 190, 200);
+    -unity-font-style: bold;
+}
+
+.heading-readout {
+    color: rgb(255, 200, 0);
+    -unity-font-style: bold;
+}

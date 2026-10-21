@@ -1,0 +1,477 @@
+{
+    "tracks": [
+        {
+            "trackId": "UAV-001",
+            "entries": [
+                {
+                    "fieldKey": "alt",
+                    "rule": ">0",
+                    "hideMarker": false,
+                    "color": {
+                        "r": 1.0,
+                        "g": 0.2199999988079071,
+                        "b": 0.2199999988079071,
+                        "a": 1.0
+                    }
+                },
+                {
+                    "fieldKey": "heading",
+                    "rule": "0~360",
+                    "hideMarker": false,
+                    "color": {
+                        "r": 1.0,
+                        "g": 0.550000011920929,
+                        "b": 0.11999999731779099,
+                        "a": 1.0
+                    }
+                },
+                {
+                    "fieldKey": "pitch",
+                    "rule": "-90~90",
+                    "hideMarker": false,
+                    "color": {
+                        "r": 1.0,
+                        "g": 0.8500000238418579,
+                        "b": 0.15000000596046449,
+                        "a": 1.0
+                    }
+                },
+                {
+                    "fieldKey": "roll",
+                    "rule": ">-5",
+                    "hideMarker": false,
+                    "color": {
+                        "r": 0.3499999940395355,
+                        "g": 1.0,
+                        "b": 0.4000000059604645,
+                        "a": 1.0
+                    }
+                },
+                {
+                    "fieldKey": "speed",
+                    "rule": ">=0",
+                    "hideMarker": false,
+                    "color": {
+                        "r": 0.20000000298023225,
+                        "g": 0.8500000238418579,
+                        "b": 1.0,
+                        "a": 1.0
+                    }
+                }
+            ]
+        },
+        {
+            "trackId": "UAV-003",
+            "entries": [
+                {
+                    "fieldKey": "alt",
+                    "rule": ">0",
+                    "hideMarker": false,
+                    "color": {
+                        "r": 1.0,
+                        "g": 0.2199999988079071,
+                        "b": 0.2199999988079071,
+                        "a": 1.0
+                    }
+                },
+                {
+                    "fieldKey": "heading",
+                    "rule": "0~360",
+                    "hideMarker": false,
+                    "color": {
+                        "r": 1.0,
+                        "g": 0.550000011920929,
+                        "b": 0.11999999731779099,
+                        "a": 1.0
+                    }
+                },
+                {
+                    "fieldKey": "pitch",
+                    "rule": "-90~90",
+                    "hideMarker": false,
+                    "color": {
+                        "r": 1.0,
+                        "g": 0.8500000238418579,
+                        "b": 0.15000000596046449,
+                        "a": 1.0
+                    }
+                },
+                {
+                    "fieldKey": "roll",
+                    "rule": "-180~180",
+                    "hideMarker": false,
+                    "color": {
+                        "r": 0.3499999940395355,
+                        "g": 1.0,
+                        "b": 0.4000000059604645,
+                        "a": 1.0
+                    }
+                },
+                {
+                    "fieldKey": "speed",
+                    "rule": ">=0",
+                    "hideMarker": false,
+                    "color": {
+                        "r": 0.20000000298023225,
+                        "g": 0.8500000238418579,
+                        "b": 1.0,
+                        "a": 1.0
+                    }
+                },
+                {
+                    "fieldKey": "battery",
+                    "rule": "0~100",
+                    "hideMarker": false,
+                    "color": {
+                        "r": 0.44999998807907107,
+                        "g": 0.5,
+                        "b": 1.0,
+                        "a": 1.0
+                    }
+                }
+            ]
+        },
+        {
+            "trackId": "UAV-002",
+            "entries": [
+                {
+                    "fieldKey": "alt",
+                    "rule": ">0",
+                    "hideMarker": false,
+                    "color": {
+                        "r": 1.0,
+                        "g": 0.2199999988079071,
+                        "b": 0.2199999988079071,
+                        "a": 1.0
+                    }
+                },
+                {
+                    "fieldKey": "heading",
+                    "rule": "0~360",
+                    "hideMarker": false,
+                    "color": {
+                        "r": 1.0,
+                        "g": 0.550000011920929,
+                        "b": 0.11999999731779099,
+                        "a": 1.0
+                    }
+                },
+                {
+                    "fieldKey": "pitch",
+                    "rule": "-90~90",
+                    "hideMarker": false,
+                    "color": {
+                        "r": 1.0,
+                        "g": 0.8500000238418579,
+                        "b": 0.15000000596046449,
+                        "a": 1.0
+                    }
+                },
+                {
+                    "fieldKey": "roll",
+                    "rule": "-180~180",
+                    "hideMarker": false,
+                    "color": {
+                        "r": 0.3499999940395355,
+                        "g": 1.0,
+                        "b": 0.4000000059604645,
+                        "a": 1.0
+                    }
+                },
+                {
+                    "fieldKey": "speed",
+                    "rule": ">=0",
+                    "hideMarker": false,
+                    "color": {
+                        "r": 0.20000000298023225,
+                        "g": 0.8500000238418579,
+                        "b": 1.0,
+                        "a": 1.0
+                    }
+                },
+                {
+                    "fieldKey": "battery",
+                    "rule": "0~100",
+                    "hideMarker": false,
+                    "color": {
+                        "r": 0.44999998807907107,
+                        "g": 0.5,
+                        "b": 1.0,
+                        "a": 1.0
+                    }
+                }
+            ]
+        }
+    ],
+    "defaultDetectRange": 50000.0,
+    "sensors": [
+        {
+            "key": "UAV-001|光电",
+            "range": 3000.0,
+            "color": {
+                "r": 0.10000000149011612,
+                "g": 0.44999998807907107,
+                "b": 1.0,
+                "a": 1.0
+            },
+            "visible": true,
+            "hasColor": true
+        },
+        {
+            "key": "UAV-001|雷达",
+            "range": 5000.0,
+            "color": {
+                "r": 0.0,
+                "g": 0.0,
+                "b": 0.0,
+                "a": 1.0
+            },
+            "visible": true,
+            "hasColor": false
+        },
+        {
+            "key": "UAV-002|光电",
+            "range": 2000.0,
+            "color": {
+                "r": 0.0,
+                "g": 0.0,
+                "b": 0.0,
+                "a": 1.0
+            },
+            "visible": true,
+            "hasColor": false
+        },
+        {
+            "key": "UAV-002|雷达",
+            "range": 5000.0,
+            "color": {
+                "r": 1.0,
+                "g": 0.47999998927116396,
+                "b": 0.07999999821186066,
+                "a": 1.0
+            },
+            "visible": true,
+            "hasColor": true
+        },
+        {
+            "key": "UAV-001|球形雷达",
+            "range": 2000.0,
+            "color": {
+                "r": 0.0,
+                "g": 0.0,
+                "b": 0.0,
+                "a": 1.0
+            },
+            "visible": true,
+            "hasColor": false
+        },
+        {
+            "key": "UAV-001|球雷达",
+            "range": 1500.0,
+            "color": {
+                "r": 1.0,
+                "g": 0.3199999928474426,
+                "b": 0.3199999928474426,
+                "a": 1.0
+            },
+            "visible": true,
+            "hasColor": true
+        },
+        {
+            "key": "UAV-002|球形雷达",
+            "range": 3000.0,
+            "color": {
+                "r": 0.0,
+                "g": 0.0,
+                "b": 0.0,
+                "a": 1.0
+            },
+            "visible": true,
+            "hasColor": false
+        },
+        {
+            "key": "UAV-002|形雷达",
+            "range": 3500.0,
+            "color": {
+                "r": 1.0,
+                "g": 0.8199999928474426,
+                "b": 0.11999999731779099,
+                "a": 1.0
+            },
+            "visible": true,
+            "hasColor": true
+        },
+        {
+            "key": "UAV-001|万雷达",
+            "range": 1500.0,
+            "color": {
+                "r": 1.0,
+                "g": 0.3199999928474426,
+                "b": 0.3199999928474426,
+                "a": 1.0
+            },
+            "visible": true,
+            "hasColor": true
+        },
+        {
+            "key": "UAV-002|1雷达",
+            "range": 3500.0,
+            "color": {
+                "r": 1.0,
+                "g": 0.8199999928474426,
+                "b": 0.11999999731779099,
+                "a": 1.0
+            },
+            "visible": true,
+            "hasColor": true
+        },
+        {
+            "key": "UAV-003|雷达",
+            "range": 50000.0,
+            "color": {
+                "r": 0.05000000074505806,
+                "g": 0.8500000238418579,
+                "b": 1.0,
+                "a": 1.0
+            },
+            "visible": true,
+            "hasColor": true
+        },
+        {
+            "key": "UAV-003|光电",
+            "range": -1.0,
+            "color": {
+                "r": 0.3499999940395355,
+                "g": 1.0,
+                "b": 0.3499999940395355,
+                "a": 1.0
+            },
+            "visible": true,
+            "hasColor": true
+        },
+        {
+            "key": "UAV-002|电子侦察",
+            "range": 50000.0,
+            "color": {
+                "r": 0.0,
+                "g": 0.0,
+                "b": 0.0,
+                "a": 1.0
+            },
+            "visible": true,
+            "hasColor": false
+        }
+    ],
+    "trails": [
+        {
+            "trackId": "UAV-001",
+            "color": {
+                "r": 1.0,
+                "g": 0.8199999928474426,
+                "b": 0.11999999731779099,
+                "a": 1.0
+            },
+            "visible": true,
+            "hasColor": true
+        }
+    ],
+    "sensorCatalog": [
+        {
+            "trackId": "UAV-002",
+            "detectorType": "光电",
+            "rangeType": "",
+            "detectRange": 0.0,
+            "yawAngle": 18.790000915527345,
+            "pitchAngle": -2.2899999618530275,
+            "centerPoint": "中",
+            "centerPoint1": "",
+            "yawScanAngle": 20.0,
+            "pitchScanAngle": 3.0,
+            "radarStatus": "开启"
+        },
+        {
+            "trackId": "UAV-003",
+            "detectorType": "光电",
+            "rangeType": "",
+            "detectRange": 0.0,
+            "yawAngle": -18.790000915527345,
+            "pitchAngle": 2.2899999618530275,
+            "centerPoint": "中",
+            "centerPoint1": "",
+            "yawScanAngle": 20.0,
+            "pitchScanAngle": 3.0,
+            "radarStatus": "开启"
+        },
+        {
+            "trackId": "UAV-002",
+            "detectorType": "雷达",
+            "rangeType": "",
+            "detectRange": 0.0,
+            "yawAngle": 27.969999313354493,
+            "pitchAngle": 7.789999961853027,
+            "centerPoint": "中",
+            "centerPoint1": "",
+            "yawScanAngle": 40.0,
+            "pitchScanAngle": 6.0,
+            "radarStatus": "开启"
+        },
+        {
+            "trackId": "UAV-003",
+            "detectorType": "雷达",
+            "rangeType": "",
+            "detectRange": 0.0,
+            "yawAngle": -27.969999313354493,
+            "pitchAngle": -7.789999961853027,
+            "centerPoint": "中",
+            "centerPoint1": "",
+            "yawScanAngle": 40.0,
+            "pitchScanAngle": 6.0,
+            "radarStatus": "开启"
+        }
+    ],
+    "removedSensors": [],
+    "radar": {
+        "saved": true,
+        "front2D": -1.0,
+        "mid2D": 0.0,
+        "rear2D": -26.0,
+        "front3D": 0.30000001192092898,
+        "mid3D": 0.0,
+        "rear3D": -6.0,
+        "frontUp": -0.05000000074505806,
+        "midUp": 0.0,
+        "rearUp": -0.6741659045219421
+    },
+    "diffLabel": {
+        "saved": true,
+        "offsetRight": 0.0,
+        "offsetUp": 0.7862879037857056,
+        "offsetForward": -0.8215630054473877,
+        "cycleSeconds": 4.0,
+        "r": 0.2756740152835846,
+        "g": 0.5118741989135742,
+        "b": 0.18324784934520722,
+        "textScale": 0.2206350713968277
+    },
+    "planeIcon": {
+        "saved": true,
+        "scale": 0.1732877641916275,
+        "trailWidth": 0.20000000298023225,
+        "trailWidth3D": 70.56853485107422,
+        "ringRadius": 1.4195654392242432,
+        "hasRingOffset": true,
+        "ringOffsetX": 2.0,
+        "ringOffsetY": 3.792870018060057e-7,
+        "ringThickness": 0.4000000059604645,
+        "radarLine2D": 0.10000000149011612,
+        "radarLine3D": 1.149999976158142,
+        "modelLength": 0.7664527893066406
+    },
+    "mapView": {
+        "saved": true,
+        "zoom": 28.077138900756837,
+        "panX": -82.03164672851563,
+        "panY": -116.06285858154297,
+        "maxZoom": 80.0
+    }
+}
