@@ -89,6 +89,8 @@ public static class PanelMemory
         public float scale = 4f;
         public float trailWidth = 3f;
         public float trailWidth3D = 12f;
+        public float trailSampleMeters = 50f;
+        public float trailMaxPoints = 12000f;
         public float ringRadius = 16f;
         public bool hasRingOffset;
         public float ringOffsetX;

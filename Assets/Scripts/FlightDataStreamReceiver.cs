@@ -1528,6 +1528,28 @@ public class FlightDataStreamReceiver : MonoBehaviour
         return token[name];
     }
 
+    /// <summary>
+    /// 取原始字符串：字段存在就返回 true（哪怕是空串），用来区分「没这个字段」和「字段是空的」。
+    /// 告警这类会被覆盖的字段必须靠它判断要不要清空，否则空值会一直被忽略、旧值一直粘着。
+    /// </summary>
+    private bool TryGetRawString(JToken token, string canonical, out string value)
+    {
+        value = null;
+        if (token == null)
+            return false;
+
+        foreach (string name in EnumerateFieldNames(canonical, new string[0]))
+        {
+            var prop = GetPropertyIgnoreCase(token, name);
+            if (prop == null)
+                continue;
+            value = prop.Type == JTokenType.Null ? string.Empty : prop.ToString();
+            return true;
+        }
+
+        return false;
+    }
+
     private string GetStringMapped(JToken token, string canonical, string[] extraNames)
     {
         if (token == null)
@@ -1719,26 +1741,30 @@ public class FlightDataStreamReceiver : MonoBehaviour
         var state = prev ?? new TrackTimetableState { trackId = trackId };
         state.trackId = trackId;
 
+        // 每行自己的 flightTime（timetable 的「时间」列）优先，其次才是整帧时间。
+        string rowFlightTime = GetMappedString(token, "flightTime") ?? GetMappedString(data, "flightTime");
+        string effectiveTime = !string.IsNullOrWhiteSpace(rowFlightTime) ? rowFlightTime : frameFlightTime;
+
         // 本帧时间可能是空的：不沿用上一帧，标记出来让告警面板直接跳过。
-        if (string.IsNullOrWhiteSpace(frameFlightTime))
+        if (string.IsNullOrWhiteSpace(effectiveTime))
         {
             state.frameTimeMissing = true;
         }
         else
         {
             state.frameTimeMissing = false;
-            if (IsNewerFlightTime(frameFlightTime, state.flightTime))
-                state.flightTime = frameFlightTime;
+            state.flightTime = effectiveTime;
         }
 
-        string nextState = GetMappedString(token, "state", "飞行状态", "状态") ?? GetMappedString(data, "state", "飞行状态", "状态");
-        if (nextState != null) state.state = nextState;
+        // 状态/告警：字段存在就覆盖（空值也要清掉），避免旧告警一直挂着。
+        if (TryGetRawString(token, "state", out string nextState) || TryGetRawString(data, "state", out nextState))
+            state.state = nextState ?? string.Empty;
         float? battery = GetMappedFloat(token, "battery", "电量(%)", "电量") ?? GetMappedFloat(data, "battery", "电量(%)", "电量");
         if (battery.HasValue) state.battery = battery.Value;
         float? speed = GetMappedFloat(token, "speed", "速度(米/秒)", "速度") ?? GetMappedFloat(data, "speed", "速度(米/秒)", "速度");
         if (speed.HasValue) state.speed = speed.Value;
-        string alarm = GetMappedString(token, "alarm", "告警信息", "告警") ?? GetMappedString(data, "alarm", "告警信息", "告警");
-        if (alarm != null) state.alarm = alarm;
+        if (TryGetRawString(token, "alarm", out string alarm) || TryGetRawString(data, "alarm", out alarm))
+            state.alarm = alarm ?? string.Empty;
         string detector = GetMappedString(token, "detector_type", "探测器类型") ?? GetMappedString(data, "detector_type", "探测器类型");
         if (detector != null) state.detectorType = detector;
         string rangeType = GetMappedString(token, "range_type") ?? GetMappedString(data, "range_type");

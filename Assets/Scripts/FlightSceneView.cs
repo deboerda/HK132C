@@ -330,7 +330,7 @@ public class FlightSceneView : MonoBehaviour
     {
         if (trailSettingsSource == null)
             trailSettingsSource = FindAnyObjectByType<PlaneDisplayController>();
-        return trailSettingsSource != null ? Mathf.Max(1f, trailSettingsSource.TrailSampleMeters) : 3000f;
+        return trailSettingsSource != null ? Mathf.Max(1f, trailSettingsSource.TrailSampleMeters) : 50f;
     }
 
     /// <summary>点数上限也跟二维一致，保证两边覆盖的公里数相同。</summary>

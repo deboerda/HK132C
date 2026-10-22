@@ -964,17 +964,17 @@ public class AlarmPanel : MonoBehaviour
         var rowView = new RowView
         {
             root = rect,
-            idText = FindOrCreateCell(rowObject.transform, "PlaneId", textColor, fontSize, 100f, 0f, preserveExistingHeaderCells),
-            alarmText = FindOrCreateCell(rowObject.transform, "Alarm", textColor, fontSize, 120f, 1f, preserveExistingHeaderCells),
-            timeText = FindOrCreateCell(rowObject.transform, "Time", mutedTextColor, fontSize, 148f, 0f, preserveExistingHeaderCells),
-            stateText = FindOrCreateCell(rowObject.transform, "State", mutedTextColor, fontSize, 86f, 0f, preserveExistingHeaderCells),
+            idText = FindOrCreateCell(rowObject.transform, "PlaneId", textColor, fontSize, 88f, 0f, preserveExistingHeaderCells),
+            stateText = FindOrCreateCell(rowObject.transform, "State", mutedTextColor, fontSize, 64f, 0f, preserveExistingHeaderCells),
+            alarmText = FindOrCreateCell(rowObject.transform, "Alarm", textColor, fontSize, 140f, 1f, preserveExistingHeaderCells),
+            timeText = FindOrCreateCell(rowObject.transform, "Time", mutedTextColor, fontSize, 100f, 0f, preserveExistingHeaderCells),
         };
 
-        // 场景中可能残留旧列顺序，统一为：飞机编号、告警信息、时间、状态
+        // 场景中可能残留旧列顺序，统一为：飞机编号、时间、状态、告警信息
         rowView.idText.transform.SetSiblingIndex(0);
-        rowView.alarmText.transform.SetSiblingIndex(1);
-        rowView.timeText.transform.SetSiblingIndex(2);
-        rowView.stateText.transform.SetSiblingIndex(3);
+        rowView.timeText.transform.SetSiblingIndex(1);
+        rowView.stateText.transform.SetSiblingIndex(2);
+        rowView.alarmText.transform.SetSiblingIndex(3);
         ConfigureTimeCell(rowView.timeText);
 
         return rowView;
@@ -1042,8 +1042,8 @@ public class AlarmPanel : MonoBehaviour
         var layoutElement = text.GetComponent<LayoutElement>();
         if (layoutElement == null)
             layoutElement = text.gameObject.AddComponent<LayoutElement>();
-        layoutElement.minWidth = 148f;
-        layoutElement.preferredWidth = 148f;
+        layoutElement.minWidth = 100f;
+        layoutElement.preferredWidth = 100f;
         layoutElement.flexibleWidth = 0f;
     }
 

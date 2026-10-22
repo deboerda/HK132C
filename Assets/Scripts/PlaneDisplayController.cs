@@ -55,13 +55,17 @@ public class PlaneDisplayController : MonoBehaviour
     [Tooltip("图标机头在贴图上朝右。90 使航向 0 竖直向上，航向增大为顺时针。")]
     [SerializeField] private float planeIconZeroHeadingOffset = 90f;
     [SerializeField] [Min(0.2f)] private float trailWidth = 3f;
-    [Tooltip("航迹采样间隔（米）。二维三维共用，值越大越省性能。")]
-    [SerializeField] private float trailSampleMeters = 3000f;
+    [Tooltip("航迹采样间隔（米）。二维三维共用；值越小轨迹越连续，值越大越省性能。")]
+    [SerializeField] private float trailSampleMeters = 50f;
     [SerializeField] private float trailPointDistanceThreshold = 4f;
     [SerializeField] private float trailBreakDistance = 28f;
     [Tooltip("航迹最多保留的点数。二维三维共用，保证覆盖公里数一致。")]
     [SerializeField] private float trailMaxPoints = 12000f;
-    public float TrailMaxPoints => Mathf.Max(16f, trailMaxPoints);
+    public float TrailMaxPoints
+    {
+        get => Mathf.Max(16f, trailMaxPoints);
+        set => trailMaxPoints = Mathf.Max(16f, value);
+    }
     private float suppressRealtimeTrailUntil;
     public bool IsSuppressingRealtimeTrails => Time.unscaledTime < suppressRealtimeTrailUntil;
 
@@ -144,6 +148,10 @@ public class PlaneDisplayController : MonoBehaviour
             planeIconScale = Mathf.Max(0.05f, store.planeIcon.scale);
             if (store.planeIcon.trailWidth > 0.05f)
                 trailWidth = store.planeIcon.trailWidth;
+            if (store.planeIcon.trailSampleMeters > 0.5f)
+                trailSampleMeters = store.planeIcon.trailSampleMeters;
+            if (store.planeIcon.trailMaxPoints > 16f)
+                trailMaxPoints = store.planeIcon.trailMaxPoints;
         }
     }
 

@@ -127,6 +127,9 @@ public class ReferencePlanePin : MonoBehaviour
         {
             displayNowEarly.PlaneIconScale = NumberRow("plane", "飞机(地图)", displayNowEarly.PlaneIconScale, 0.01f, 8f);
             displayNowEarly.TrailMapWidth = NumberRow("trail2d", "二维轨迹", displayNowEarly.TrailMapWidth, 0.05f, 24f);
+            displayNowEarly.TrailSampleMeters = NumberRow("trailSample", "采样间隔", displayNowEarly.TrailSampleMeters, 5f, 5000f);
+            displayNowEarly.TrailMaxPoints = NumberRow("trailMaxPts", "最大点数", displayNowEarly.TrailMaxPoints, 100f, 12000f);
+            GUILayout.Label($"轨迹最长覆盖 {displayNowEarly.TrailSampleMeters * displayNowEarly.TrailMaxPoints / 1000f:0.0} km");
         }
 
         var radar = FindAnyObjectByType<RadarDetectionSystem>();
@@ -399,6 +402,8 @@ public class ReferencePlanePin : MonoBehaviour
         store.planeIcon.saved = true;
         store.planeIcon.scale = displayNow.PlaneIconScale;
         store.planeIcon.trailWidth = displayNow.TrailMapWidth;
+        store.planeIcon.trailSampleMeters = displayNow.TrailSampleMeters;
+        store.planeIcon.trailMaxPoints = displayNow.TrailMaxPoints;
         var radar = FindAnyObjectByType<RadarDetectionSystem>();
         if (radar != null)
         {
